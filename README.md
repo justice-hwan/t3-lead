@@ -12,6 +12,22 @@ user ─ lead              (the thread you talk to; Claude harness)
 
 The behavior rules for each role are not written into briefs. A `UserPromptSubmit` hook works out a thread's role from T3 metadata and injects the matching rules, so the lead never has to include rules or identity claims in a brief.
 
+## Quick start: let your agent install it
+
+Paste this into any T3 Code thread on the machine (a Claude- or Codex-harness session with shell access):
+
+```text
+Install t3-lead on this machine. Follow https://github.com/justice-hwan/t3-lead/blob/main/docs/agent-install.md step by step, show me the verification output, and do not register this thread as the lead.
+```
+
+When it is done, open a **new** thread on the lead instance and model the agent reports, and say:
+
+```text
+Run t3lead init and work as the lead.
+```
+
+From then on, give that thread your requests. For manual setup, see [Configuration](#configuration) and [Install](#install).
+
 ## Layout
 
 ```
@@ -23,6 +39,7 @@ hooks/role.py              role-detection hook (UserPromptSubmit)
 rules/verifier.md          rules injected into verifier sessions ({{placeholders}} filled from the config)
 rules/lane.md              rules injected into lanes
 skill/SKILL.md             lead skill, linked as <skill_dir>/t3-lead
+docs/agent-install.md      step-by-step install guide written for an agent
 skill/references/          brief formats (briefs.md), models and instances (models.md)
 state/                     runtime data (not tracked): tasks/, roles/, lessons.jsonl, hook.log
 ```

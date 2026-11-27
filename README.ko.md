@@ -12,6 +12,22 @@ T3 Code에서 쓰는 계층형 오케스트레이션입니다. 사용자와 이�
 
 역할별 행동 규칙은 브리프에 적지 않습니다. `UserPromptSubmit` 훅이 T3 메타데이터로 스레드의 역할을 판별해 해당 규칙을 넣어 주므로, 리드는 브리프에 규칙이나 신원을 쓸 필요가 없습니다.
 
+## 빠른 시작: 에이전트에게 설치 맡기기
+
+설치할 컴퓨터의 T3 Code 스레드(셸을 쓸 수 있는 Claude 또는 Codex 세션)에 아래를 그대로 붙여 넣으세요.
+
+```text
+이 컴퓨터에 t3-lead를 설치해줘. https://github.com/justice-hwan/t3-lead/blob/main/docs/agent-install.md 를 순서대로 따라 하고, 확인 단계 출력을 보여줘. 이 스레드를 리드로 등록하지는 마.
+```
+
+설치가 끝나면 에이전트가 알려 준 리드용 인스턴스와 모델로 **새 스레드**를 열고 이렇게 말하세요.
+
+```text
+t3lead init 하고 리드 모드로 일해
+```
+
+그다음부터는 그 스레드에 일을 맡기면 됩니다. 직접 설정하려면 [설정](#설정)과 [설치](#설치)를 보세요.
+
 ## 구성
 
 ```
@@ -23,6 +39,7 @@ hooks/role.py              역할 판별 훅 (UserPromptSubmit)
 rules/verifier.md          verifier 세션에 넣는 규칙 ({{자리표시자}}는 설정 값으로 채움)
 rules/lane.md              레인에 넣는 규칙
 skill/SKILL.md             리드용 스킬 (<skill_dir>/t3-lead로 링크)
+docs/agent-install.md      에이전트가 따라 하는 단계별 설치 안내
 skill/references/          브리프 형식(briefs.md), 모델과 인스턴스(models.md)
 state/                     실행 중 데이터(추적 안 함): tasks/, roles/, lessons.jsonl, hook.log
 ```
