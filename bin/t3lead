@@ -14,8 +14,9 @@
   t3lead models                        provider instance / model per role, from config.json (or defaults);
                                        one block per configured remote computer
   t3lead remotes                       remote computers (T3 linked environments) from config.json
-  t3lead version                       installed commit, and whether origin has newer commits
-  t3lead upgrade [--check]             pull the latest t3-lead (fast-forward only) and re-run install.sh;
+  t3lead version                       installed version, the latest release, and newer commits on origin
+  t3lead upgrade [--check] [--edge]    move to the latest release tag (fast-forward only) and re-run install.sh;
+                                       --edge follows the branch (main) instead of release tags;
                                        --check only lists the new commits
 """
 import json, os, secrets, subprocess, sys, time
@@ -193,33 +194,71 @@ def git(*args, check=True):
     return r.stdout.strip()
 
 
-def pending_commits(fetch=True):
-    if fetch:
-        git("fetch", "--quiet", "origin")
-    upstream = git("rev-parse", "--abbrev-ref", "@{upstream}", check=False) or "origin/main"
-    return upstream, [l for l in git("log", "--oneline", "HEAD.." + upstream).splitlines() if l]
+def fetch():
+    git("fetch", "--quiet", "--tags", "--force", "origin")
+
+
+def upstream_ref():
+    return git("rev-parse", "--abbrev-ref", "@{upstream}", check=False) or "origin/main"
+
+
+def latest_release():
+    """Newest vX.Y.Z tag that is reachable from the upstream branch, or None."""
+    tags = [t for t in git("tag", "--list", "v[0-9]*", "--merged", upstream_ref(), "--sort=-v:refname").splitlines() if t]
+    return tags[0] if tags else None
+
+
+def commits(rev_range):
+    return [l for l in git("log", "--oneline", rev_range).splitlines() if l]
+
+
+def is_ancestor(a, b):
+    return subprocess.run(["git", "-C", t3lead_config.CODE_DIR, "merge-base", "--is-ancestor", a, b]).returncode == 0
+
+
+def target(edge):
+    """(ref, label) to upgrade to: the latest release tag, or the upstream branch with --edge / when there is no tag."""
+    up = upstream_ref()
+    if edge:
+        return up, up
+    rel = latest_release()
+    return (rel, "release " + rel) if rel else (up, up + " (no release tag yet)")
 
 
 def cmd_version(_):
-    head = git("log", "-1", "--format=%h %cs %s")
-    print("installed: " + head)
-    upstream, new = pending_commits()
-    print("up to date with %s" % upstream if not new else "%d newer commit(s) on %s; run `t3lead upgrade`" % (len(new), upstream))
+    fetch()
+    desc = git("describe", "--tags", "--always", "--match", "v[0-9]*", check=False)
+    print("installed: %s  (%s)" % (desc, git("log", "-1", "--format=%h %cs %s")))
+    rel, up = latest_release(), upstream_ref()
+    if rel:
+        new = commits("HEAD.." + rel)
+        if new: print("latest release %s: %d commit(s) newer; run `t3lead upgrade`" % (rel, len(new)))
+        elif is_ancestor(rel, "HEAD") and commits(rel + "..HEAD"): print("latest release %s: you are ahead of it (edge)" % rel)
+        else: print("latest release %s: up to date" % rel)
+    else:
+        print("no release tag yet")
+    edge = commits("HEAD.." + up)
+    print("%s: %s" % (up, "%d commit(s) newer; `t3lead upgrade --edge` takes them" % len(edge) if edge else "up to date"))
 
 
 def cmd_upgrade(a):
+    old = git("rev-parse", "--short", "HEAD")
+    fetch()
+    ref, label = target("--edge" in a)
+    new = commits("HEAD.." + ref)
+    if not new:
+        ahead = "" if is_ancestor("HEAD", ref) else "; you are ahead of it (use --edge to follow the branch)"
+        print("already up to date with %s (%s)%s" % (label, old, ahead)); return
+    print("new commits in %s:" % label)
+    for l in reversed(new): print("  " + l)
+    if "--check" in a: return
     dirty = [l for l in git("status", "--porcelain", "--untracked-files=no").splitlines() if l]
     if dirty:
         die("local changes in %s; commit or discard them first:\n%s" % (t3lead_config.CODE_DIR, "\n".join(dirty)))
-    old = git("rev-parse", "--short", "HEAD")
-    upstream, new = pending_commits()
-    if not new:
-        print("already up to date (%s)" % old); return
-    print("new commits on %s:" % upstream)
-    for l in reversed(new): print("  " + l)
-    if "--check" in a: return
-    git("merge", "--ff-only", "--quiet", upstream)
-    print("updated %s -> %s; re-running install.sh" % (old, git("rev-parse", "--short", "HEAD")), flush=True)
+    r = subprocess.run(["git", "-C", t3lead_config.CODE_DIR, "merge", "--ff-only", "--quiet", ref], capture_output=True, text=True)
+    if r.returncode != 0:
+        die("cannot fast-forward to %s (local commits?): %s" % (label, (r.stderr or r.stdout).strip()))
+    print("updated %s -> %s (%s); re-running install.sh" % (old, git("rev-parse", "--short", "HEAD"), label), flush=True)
     r = subprocess.run(["bash", os.path.join(t3lead_config.CODE_DIR, "install.sh")], env={**os.environ, "T3_LEAD_HOME": ROOT})
     if r.returncode != 0: die("install.sh failed (exit %d); the code is updated, fix the error and re-run install.sh" % r.returncode)
     print("done. Verifier/lane rules apply from the next prompt. Lead: re-read the t3-lead skill now; "
