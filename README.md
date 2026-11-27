@@ -26,6 +26,8 @@ When it is done, open a **new** thread on the lead instance and model the agent 
 Run t3lead init and work as the lead.
 ```
 
+**Lane-only computer** (it only runs lanes for a lead on another computer): add "lane-only" to the install prompt, for example `Install t3-lead on this machine lane-only. Follow ...`. It installs the hook and rules but no lead thread; then add the computer under `remotes` on the lead's computer.
+
 From then on, give that thread your requests. For manual setup, see [Configuration](#configuration) and [Install](#install).
 
 ## Upgrading

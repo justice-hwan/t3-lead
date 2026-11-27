@@ -62,7 +62,9 @@ Only when the user wants lanes to run on another computer linked to T3 (a linked
 
 ## 8. Hand over to the user
 
-Tell the user:
+**Lane-only computer.** If the user said this computer only runs lanes for a lead on another computer (for example "install it lane-only"), stop after step 6: do not open or register a lead thread here, and leave `models.lead` / `models.verifier` at whatever is in the config. Tell the user the values the lead's computer needs for its `remotes` entry: this computer's provider instance names for the lane rows (`t3lead models`). The `environmentId` and `projectId` are looked up from the lead's computer (step 7). Then list the files the installer changed and their backups.
+
+Otherwise, tell the user:
 
 1. Open a **new** T3 thread on the Claude-harness instance with the lead model (`t3lead models`, row `lead`). Hooks and wrapper changes apply only to sessions started after the install.
 2. In that thread, say: `Run t3lead init and work as the lead.` (Korean: `t3lead init 하고 리드 모드로 일해`)
