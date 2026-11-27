@@ -30,7 +30,9 @@ if [ "$CONFIG_FOUND" = 1 ]; then echo "config: $CONFIG_PATH"; else echo "config:
 echo "T3_LEAD_HOME: $ROOT"
 
 GLOBAL=1
-if [ "$(realpath -m "$ROOT")" != "$(realpath -m "$CONFIGURED_HOME")" ] && [ "$ALLOW_CUSTOM" != 1 ]; then
+# portable path comparison (BSD realpath on macOS has no -m): python's realpath tolerates missing paths
+canon() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+if [ "$(canon "$ROOT")" != "$(canon "$CONFIGURED_HOME")" ] && [ "$ALLOW_CUSTOM" != 1 ]; then
   GLOBAL=0
   echo "T3_LEAD_HOME ($ROOT) differs from the configured home ($CONFIGURED_HOME):"
   echo "  user-global files (Claude/Codex hooks, skill links, CLI link) are left untouched."
@@ -70,11 +72,13 @@ elif [ ! -f "$CLAUDE_WRAPPER" ]; then
   echo "Claude wrapper: skipped (file missing): $CLAUDE_WRAPPER"
 else
 python3 - "$CLAUDE_WRAPPER" <<'PY'
-import os, sys
+import os, re, sys
 p = sys.argv[1]; s = open(p).read(); o = s
 s = s.replace("('PATH','TERM','LANG','LC_ALL','TMPDIR')", "('PATH','TERM','LANG','LC_ALL','TMPDIR','T3CODE_THREAD_ID')")
-s = s.replace("a+=['--setting-sources','']", "a+=['--setting-sources','user']")
-if s == o: print("Claude wrapper already patched, or its format differs (check manually):", p)
+# tolerate spacing and the variable name (a+=[...] / args += [...])
+s = re.sub(r"(\w+\s*\+=\s*\[\s*'--setting-sources'\s*,\s*)''(\s*\])", r"\1'user'\2", s)
+if s == o and "'T3CODE_THREAD_ID'" in s and re.search(r"'--setting-sources'\s*,\s*'user'", s): print("Claude wrapper already patched:", p)
+elif s == o: print("Claude wrapper: format differs from the expected snippets (check manually):", p)
 elif os.environ.get("DRY") == "1": print("wrapper would be patched:", p)
 else: open(p, "w").write(s); print("wrapper patched:", p)
 PY
