@@ -60,7 +60,7 @@ def opt(args, name, default=None):
     return default
 
 
-STATE_GITIGNORE = "roles/\nhook.log\nheavy/\n*.tmp\n.backup.lock\n"
+STATE_GITIGNORE = "roles/\nhook.log\nheavy/\n*.tmp\n.backup.lock\nbackup.err\n"
 
 
 def sgit(*args, check=True):
