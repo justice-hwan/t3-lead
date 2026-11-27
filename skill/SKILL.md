@@ -13,11 +13,11 @@ user ─ lead (this thread, Claude harness)
                └─ several lanes (parallel)
 ```
 
-The rules for verifier sessions and lanes are injected by the `~/.t3-lead/hooks/role.py` hook, which identifies the role from T3 metadata (thread ID, parent thread). That is why the lead writes neither rules nor identity into a brief.
+The rules for verifier sessions and lanes are injected by the t3-lead `hooks/role.py` hook, which identifies the role from T3 metadata (thread ID, parent thread). That is why the lead writes neither rules nor identity into a brief.
 
 ## At start
 
-1. Once, register this thread as the lead with `~/.t3-lead/bin/t3lead init`. For children of an unregistered thread the hook injects nothing.
+1. Once, register this thread as the lead with `t3lead init` (the CLI link the installer puts on PATH; inside T3, `$HOME` and `~` may point to a provider-specific home, so do not spell out `~/.t3-lead/...` paths). For children of an unregistered thread the hook injects nothing.
 2. After a restart or context compaction, read `t3lead status` before trusting memory. It shows the requests in progress and what to look at first.
 
 ## When a request arrives
