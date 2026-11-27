@@ -19,6 +19,11 @@ The rules for verifier sessions and lanes are injected by the t3-lead `hooks/rol
 
 1. Once, register this thread as the lead with `t3lead init` (the CLI link the installer puts on PATH; inside T3, `$HOME` and `~` may point to a provider-specific home, so do not spell out `~/.t3-lead/...` paths). For children of an unregistered thread the hook injects nothing.
 2. After a restart or context compaction, read `t3lead status` before trusting memory. It shows the requests in progress and what to look at first.
+3. Read `t3lead rule list`: the user's standing rules. Follow them yourself; the hook also injects them into every verifier and lane, so do not copy them into briefs.
+
+## Owner rules
+
+When the user states a standing rule ("from now on...", "always...", "never..."), record it in one line with `t3lead rule add "<rule>"`, in the user's words but unambiguous, and confirm it to the user. Remove one only when the user says so (`t3lead rule rm <n>`). One-off instructions for a single request go in that request's brief, not here.
 
 ## When a request arrives
 
@@ -32,7 +37,8 @@ The rules for verifier sessions and lanes are injected by the t3-lead `hooks/rol
    - **Reuse a finished verifier session** (`t3_thread_send` to its thread) only for a follow-up request that touches the same repository or files, so it keeps that context. If that session is still working, or its context is already large, create a new one.
    - **Overlaps between requests are the lead's job.** Before delegating, check `t3lead task list` for open requests that touch the same repository or files. If there are any, name the shared resource in the brief and say how to share it (for example: append only under a lock, or separate worktrees), or wait until the other request finishes.
    - **Set a backup alarm for the verifier session.** Right after delegating, `schedule_task` with `{type:"once", runAt:<now + expected duration + margin>}` (60 minutes when there is no estimate), `bindToCurrentThread: true`, and a prompt naming the request ID and the verifier thread. This catches a verifier session that stalls or a completion notification that never arrives (T3 does not resend lost notifications). When the alarm wakes you, run `t3lead task show <id>`: if the request is already delivered or done, do nothing; otherwise check the verifier once with `task_status` and either send it one nudge on the same thread, set one more alarm, or move the request to `waiting-owner` and tell the user. When the verifier's report arrives first, delete the alarm with `delete_scheduled_task`. Record the alarm ID in the ledger note.
-4. **End the turn.** Do not wait or poll. The completion notification wakes this thread. If the user asks in the meantime, answer only "in progress". Do not guess at results.
+4. **When the verifier fails rather than reports.** A completion notification can say the verifier's turn failed or stopped (provider error, overloaded model, interrupted) without a report. Restart it the way the verifier restarts lanes: send `Continue the request from where you stopped; check what is already done first.` to the same verifier thread at once, then after alarms of 3 and 10 minutes (`schedule_task`, never sleep). After three failures, switch it to another Claude model with `t3_thread_configure` and try once more, then move the request to `waiting-owner` and tell the user.
+5. **End the turn.** Do not wait or poll. The completion notification wakes this thread. If the user asks in the meantime, answer only "in progress". Do not guess at results.
 
 ## Remote computers
 

@@ -107,7 +107,7 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 
 `remotes` maps a short name to a computer: `{"macbook": {"environmentId": "...", "projectId": "...", "label": "...", "models": {...}}}`. `environmentId` and `projectId` are required (T3 refuses a delegated task to another environment without a project: `target_required`); `label` is optional; `models` takes the same keys as the top-level `models`, and any key it omits is inherited from the local value (only correct when the instance names match, so set them when they differ). Get the IDs from `t3_environment_links` and `t3_project_list`. With no `remotes`, the remote paragraph is left out of the verifier rules entirely. `t3lead remotes` lists them and `t3lead models` adds a block per remote.
 
-How the values are used: `rules/verifier.md` contains `{{placeholders}}` (`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`) that `hooks/role.py` fills in from the config each time it injects the rules, so a config change applies on the next prompt with no re-install. The remote paragraph (rule 7) sits between `{{#remotes}}` and `{{/remotes}}` and is injected only when `remotes` is set; `{{remote_list}}` expands to one line per remote with its IDs and models. The lead skill does not hard-code names either: it tells the lead to run `t3lead models`.
+How the values are used: `rules/verifier.md` contains `{{placeholders}}` (`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`) that `hooks/role.py` fills in from the config each time it injects the rules, so a config change applies on the next prompt with no re-install. The remote paragraph (rule 8) sits between `{{#remotes}}` and `{{/remotes}}` and is injected only when `remotes` is set; `{{remote_list}}` expands to one line per remote with its IDs and models. The lead skill does not hard-code names either: it tells the lead to run `t3lead models`.
 
 ## Install
 
@@ -141,6 +141,8 @@ t3lead task move <id> <state> [--note N] [--verifier THREAD] [--where R]
         --where: remote computer that runs the lanes (a name from `t3lead remotes`; `-` clears it)
 t3lead task list [--all]                    unfinished requests (default) / all
 t3lead task show <id>                       full JSON of one request
+t3lead rule add "<standing rule>"           add an owner rule; the hook injects all of them into every verifier and lane
+t3lead rule list | rm <n>                   list owner rules / remove one
 t3lead learn "<one-line lesson>" [--kind K] append a lesson (default kind: general)
 t3lead lessons [--kind K]                   list lessons (a kind also includes general)
 t3lead status                               short summary to read after a restart

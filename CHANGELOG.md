@@ -2,6 +2,11 @@
 
 `t3lead upgrade` moves to the newest tag listed here; `t3lead upgrade --edge` follows `main`.
 
+## Unreleased
+
+- Owner rules: `t3lead rule add|list|rm` keeps the user's standing rules in `state/owner-rules.md`; the hook appends them to every verifier and lane prompt, and the lead reads them at start.
+- Failed-run restarts: verifier rule 7 restarts a lane whose turn failed or stopped (same thread, then 3- and 10-minute alarms, then the next model); the lead does the same for a failed verifier. Remote-lane rule is now rule 8.
+
 ## v0.1.0 — 2026-11-27
 
 First release.

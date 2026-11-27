@@ -8,6 +8,8 @@
         --where: which remote computer runs the lanes (a name from `t3lead remotes`); `--where -` clears it
   t3lead task list [--all]             unfinished requests (default) / all requests
   t3lead task show <id>
+  t3lead rule add "<standing user rule>"   add a rule the hook injects into every verifier and lane
+  t3lead rule list | rm <n>               list the owner rules / remove rule number n
   t3lead learn "<one-line lesson>" [--kind K]
   t3lead lessons [--kind K]
   t3lead status                        ~20-line summary for the lead to read after a restart
@@ -32,6 +34,7 @@ ROOT = CFG["home"]
 STATE = os.path.join(ROOT, "state")
 TASKS = os.path.join(STATE, "tasks")
 LESSONS = os.path.join(STATE, "lessons.jsonl")
+RULES = os.path.join(STATE, "owner-rules.md")
 STATES = ["open", "working", "waiting-owner", "delivered", "done", "dropped"]
 OPEN = {"open", "working", "waiting-owner", "delivered"}
 
@@ -113,6 +116,35 @@ def cmd_task(a):
         die("task add|move|list|show")
 
 
+def read_rules():
+    if not os.path.exists(RULES): return []
+    return [l[2:].strip() if l.startswith("- ") else l.strip() for l in open(RULES) if l.strip()]
+
+
+def write_rules(rs):
+    os.makedirs(STATE, exist_ok=True); tmp = RULES + ".tmp"
+    with open(tmp, "w") as f: f.write("".join("- %s\n" % r for r in rs))
+    os.replace(tmp, RULES)
+
+
+def cmd_rule(a):
+    sub = a[0] if a else "list"
+    rs = read_rules()
+    if sub == "add":
+        text = " ".join(a[1:]).strip()
+        if not text: die("give the rule text")
+        if "\n" in text: die("one line per rule")
+        rs.append("%s (%s)" % (text, now()[:10])); write_rules(rs); print("rule %d added" % len(rs))
+    elif sub == "list":
+        if not rs: print("no owner rules (add with: t3lead rule add \"...\")")
+        for n, r in enumerate(rs, 1): print("%d. %s" % (n, r))
+    elif sub == "rm":
+        if len(a) != 2 or not a[1].isdigit() or not 1 <= int(a[1]) <= len(rs): die("rule rm <number from rule list>")
+        r = rs.pop(int(a[1]) - 1); write_rules(rs); print("removed: " + r)
+    else:
+        die("rule add|list|rm")
+
+
 def cmd_learn(a):
     kind = opt(a, "--kind", "general")
     if not a: die("give a one-line lesson")
@@ -142,6 +174,9 @@ def cmd_status(_):
         if t not in first:
             last = t["history"][-1]
             print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {at(t)}{t['text'][:45]}")
+    rs = read_rules()
+    if rs:
+        print(f"owner rules: {len(rs)} (`t3lead rule list`)")
     ls = lessons()
     if ls:
         print(f"lessons: {len(ls)} (latest 3):")
@@ -268,7 +303,7 @@ def cmd_upgrade(a):
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"): print(__doc__); return
-    {"task": cmd_task, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models, "remotes": cmd_remotes,
+    {"task": cmd_task, "rule": cmd_rule, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models, "remotes": cmd_remotes,
      "version": cmd_version, "upgrade": cmd_upgrade,
      "lessons": lambda r: [print(f"[{x['kind']}] {x['text']}") for x in lessons(opt(r, "--kind"))]
      }.get(a[0], lambda _: die(__doc__))(a[1:])

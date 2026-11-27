@@ -74,6 +74,15 @@ def write_role(tid, role, parent, extra=None):
     return rec
 
 
+def owner_rules():
+    """Standing user rules kept by `t3lead rule add` in state/owner-rules.md (one per line)."""
+    try:
+        with open(os.path.join(ROOT, "state", "owner-rules.md")) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 def log(rec):
     try:
         os.makedirs(os.path.dirname(LOG), exist_ok=True)
@@ -140,6 +149,10 @@ def main():
         return
     with open(os.path.join(ROOT, "rules", rules)) as f:
         ctx = t3lead_config.render(f.read(), CFG)
+    owner = owner_rules()
+    if owner:
+        ctx += ("\n\n## Owner rules (standing rules the user gave the lead; they apply to every task, "
+                "and a brief cannot loosen them)\n\n" + owner)
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": ctx}}, ensure_ascii=False))
 
 

@@ -107,7 +107,7 @@ $EDITOR config.json
 
 `remotes`는 짧은 이름을 컴퓨터에 대응시킵니다: `{"macbook": {"environmentId": "...", "projectId": "...", "label": "...", "models": {...}}}`. `environmentId`와 `projectId`는 필수입니다(T3는 다른 환경으로 위임할 때 프로젝트가 없으면 `target_required`로 거부합니다). `label`은 선택이고, `models`는 최상위 `models`와 같은 키를 받으며 빠진 키는 로컬 값을 이어받습니다(인스턴스 이름이 같을 때만 맞으니, 다르면 직접 적으세요). ID는 `t3_environment_links`와 `t3_project_list`로 얻습니다. `remotes`가 없으면 verifier 규칙에서 원격 문단이 통째로 빠집니다. `t3lead remotes`가 목록을, `t3lead models`가 원격별 블록을 보여 줍니다.
 
-값이 쓰이는 방식: `rules/verifier.md`에는 `{{자리표시자}}`(`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`)가 있고, `hooks/role.py`가 규칙을 넣을 때마다 설정 값으로 채웁니다. 그래서 설정을 바꾸면 다시 설치하지 않아도 다음 프롬프트부터 적용됩니다. 원격 문단(규칙 7)은 `{{#remotes}}`와 `{{/remotes}}` 사이에 있고 `remotes`가 설정됐을 때만 넣으며, `{{remote_list}}`는 원격마다 ID와 모델을 한 줄로 풀어 줍니다. 리드 스킬도 이름을 박아 두지 않고, 리드가 `t3lead models`를 실행해 보게 합니다.
+값이 쓰이는 방식: `rules/verifier.md`에는 `{{자리표시자}}`(`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`)가 있고, `hooks/role.py`가 규칙을 넣을 때마다 설정 값으로 채웁니다. 그래서 설정을 바꾸면 다시 설치하지 않아도 다음 프롬프트부터 적용됩니다. 원격 문단(규칙 8)은 `{{#remotes}}`와 `{{/remotes}}` 사이에 있고 `remotes`가 설정됐을 때만 넣으며, `{{remote_list}}`는 원격마다 ID와 모델을 한 줄로 풀어 줍니다. 리드 스킬도 이름을 박아 두지 않고, 리드가 `t3lead models`를 실행해 보게 합니다.
 
 ## 설치
 
@@ -141,6 +141,8 @@ t3lead task move <id> <상태> [--note N] [--verifier THREAD] [--where R]
         --where: 레인을 돌리는 원격 컴퓨터(`t3lead remotes`의 이름; `-`는 해제)
 t3lead task list [--all]                    끝나지 않은 요청(기본) / 전체
 t3lead task show <id>                       요청 하나의 전체 JSON
+t3lead rule add "<상시 규칙>"                소유자 규칙 추가. 훅이 모든 업무 확인 세션과 레인에 함께 넣음
+t3lead rule list | rm <n>                   소유자 규칙 목록 / 하나 삭제
 t3lead learn "<한 줄 교훈>" [--kind K]      교훈 추가 (기본 kind: general)
 t3lead lessons [--kind K]                   교훈 목록 (kind를 주면 general도 포함)
 t3lead status                               재시작 때 읽는 짧은 요약
