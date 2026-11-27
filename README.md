@@ -38,7 +38,7 @@ Tell the lead thread (or any T3 thread on that machine):
 Run t3lead upgrade, show me the output, then re-read the t3-lead skill.
 ```
 
-`t3lead upgrade` fast-forwards the checkout to the latest `origin/main` and re-runs `install.sh`. It refuses to run if tracked files have local changes. `t3lead upgrade --check` only lists the new commits, and `t3lead version` shows the installed commit. Verifier and lane rules take effect from the next prompt; hook or wrapper changes apply to sessions started after the upgrade.
+`t3lead upgrade` fast-forwards the checkout to the latest release tag (`vX.Y.Z`, see [CHANGELOG.md](CHANGELOG.md)) and re-runs `install.sh`. `t3lead upgrade --edge` follows `origin/main` instead, for changes not yet released. It refuses to run if tracked files have local changes. `--check` only lists the new commits, and `t3lead version` shows the installed version, the latest release and newer commits on `main`. Verifier and lane rules take effect from the next prompt; hook or wrapper changes apply to sessions started after the upgrade.
 
 ## Layout
 
@@ -99,6 +99,7 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 | `codex_bin` | `codex` found on `~/.local/bin` or `PATH` | Codex binary used to read the hook trust hash |
 | `skill_dirs` | `["~/.claude/skills"]` | skill folders; `t3-lead` is linked into each |
 | `cli_link` | `~/.local/bin/t3lead` | where the CLI symlink goes |
+| `t3_settings` | `~/.t3/userdata/settings.json` | T3's settings, read only to check that every instance in `models` has its home covered |
 | `models` | see below | provider instance and model per role |
 | `remotes` | none | other computers (T3 linked environments) that lanes can run on; see below |
 
@@ -118,6 +119,8 @@ The script is safe to run repeatedly; run it again after re-running any setup th
 
 - `./install.sh --dry-run` prints what each step would do and writes nothing.
 - If `T3_LEAD_HOME` is set to something other than the configured `home` (for example a temp folder for a trial run), the script does **not** touch user-global files (Claude/Codex hooks, skill links, CLI link); it only creates `state/` under that folder. Add `--allow-custom-home` to apply the global changes anyway. This keeps a trial run from pointing your real links at a folder that is later deleted.
+
+Before changing anything it checks instance homes: for every provider instance named in `models`, it reads that instance's home from `t3_settings` and prints a `WARNING` if the matching settings file or Codex home is missing from `claude_settings` / `codex_homes`. Wrapped (CPA or proxy) instances usually have their own home, and a missed one silently gets no role rules.
 
 What it changes (each step reports "already ..." and does nothing if already applied):
 

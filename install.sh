@@ -29,6 +29,9 @@ export STAMP=$(date +%Y%m%d)
 if [ "$CONFIG_FOUND" = 1 ]; then echo "config: $CONFIG_PATH"; else echo "config: none ($CONFIG_PATH not found), using defaults"; fi
 echo "T3_LEAD_HOME: $ROOT"
 
+echo "instance homes (models rows vs claude_settings / codex_homes):"
+python3 "$SCRIPT_DIR/lib/t3lead_config.py" check
+
 GLOBAL=1
 # portable path comparison (BSD realpath on macOS has no -m): python's realpath tolerates missing paths
 canon() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }

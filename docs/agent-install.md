@@ -24,6 +24,7 @@ If the user keeps several instances of the same harness (for example a direct lo
 The hook must be registered in the settings each instance actually reads.
 
 - **Claude harness:** the default is `~/.claude/settings.json`. An instance that runs through a wrapper script usually sets its own `HOME` / `CLAUDE_CONFIG_DIR`; then it reads `<that home>/settings.json`. Find the wrapper from T3's provider settings (`~/.t3/userdata/settings.json`, `providerInstances`) and read it.
+- Each entry under `providerInstances` in T3's settings has `config.homePath` when the instance has its own home; that is the home to use. The installer compares these with your config and warns about any it misses.
 - **Codex harness:** the default is `~/.codex`. A wrapped instance usually sets `CODEX_HOME`. Note the `codex` binary the wrapper runs.
 - **Claude wrapper:** if the Claude instance runs through a wrapper that filters environment variables or passes `--setting-sources ''`, record its path as `claude_wrapper`. The installer patches it to pass `T3CODE_THREAD_ID` and to read user settings (`--setting-sources user`); without that, the hook either does not run or cannot identify threads.
 
@@ -39,6 +40,8 @@ bash install.sh --dry-run    # read the plan; nothing is written
 bash install.sh              # apply; backups are written as <file>.bak-t3lead-<date>
 bash install.sh              # second run must report only "already ..." lines
 ```
+
+Read the "instance homes" lines at the top. A `WARNING` means a provider instance used in `models` keeps its settings in a home that is missing from `claude_settings` / `codex_homes` (typical for wrapped CPA or proxy instances); the hook would never run there. Add that path to `config.json` and run `install.sh` again until no warning is left.
 
 If a line says the wrapper "format differs", open the wrapper and tell the user what you see instead of editing it by hand. If anything fails on this OS, record the cause; fix the installer only minimally and only in a way that also works on Linux and macOS, and show the user the `git diff`.
 

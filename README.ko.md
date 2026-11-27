@@ -38,7 +38,7 @@ t3lead init 하고 리드 모드로 일해
 t3lead upgrade 실행하고 출력 보여줘. 그다음 t3-lead 스킬을 다시 읽어.
 ```
 
-`t3lead upgrade`는 최신 `origin/main`으로 fast-forward한 뒤 `install.sh`를 다시 실행합니다. 추적 파일에 로컬 수정이 있으면 실행하지 않습니다. `t3lead upgrade --check`는 새 커밋 목록만 보여 주고, `t3lead version`은 설치된 커밋을 보여 줍니다. 업무 확인 세션과 레인 규칙은 다음 프롬프트부터 적용되고, 훅이나 래퍼 변경은 업그레이드 뒤에 시작한 세션부터 적용됩니다.
+`t3lead upgrade`는 최신 릴리스 태그(`vX.Y.Z`, [CHANGELOG.md](CHANGELOG.md) 참고)로 fast-forward한 뒤 `install.sh`를 다시 실행합니다. 아직 릴리스되지 않은 변경까지 받으려면 `t3lead upgrade --edge`를 쓰면 `origin/main`을 따라갑니다. 추적 파일에 로컬 수정이 있으면 실행하지 않습니다. `--check`는 새 커밋 목록만 보여 주고, `t3lead version`은 설치된 버전, 최신 릴리스, `main`의 새 커밋을 보여 줍니다. 업무 확인 세션과 레인 규칙은 다음 프롬프트부터 적용되고, 훅이나 래퍼 변경은 업그레이드 뒤에 시작한 세션부터 적용됩니다.
 
 ## 구성
 
@@ -99,6 +99,7 @@ $EDITOR config.json
 | `codex_bin` | `~/.local/bin`과 `PATH`에서 찾은 `codex` | 훅 신뢰 해시를 읽는 데 쓰는 Codex 실행 파일 |
 | `skill_dirs` | `["~/.claude/skills"]` | 스킬 폴더들. 각각에 `t3-lead`를 링크 |
 | `cli_link` | `~/.local/bin/t3lead` | CLI 심볼릭 링크 위치 |
+| `t3_settings` | `~/.t3/userdata/settings.json` | T3 설정 파일. `models`의 각 인스턴스가 쓰는 홈이 설정에 들어 있는지 확인할 때만 읽음 |
 | `models` | 아래 참고 | 역할별 provider 인스턴스와 모델 |
 | `remotes` | 없음 | 레인을 돌릴 수 있는 다른 컴퓨터(T3 linked environment). 아래 참고 |
 
@@ -118,6 +119,8 @@ $EDITOR config.json
 
 - `./install.sh --dry-run`은 각 단계가 무엇을 할지만 출력하고 아무것도 쓰지 않습니다.
 - `T3_LEAD_HOME`을 설정된 `home`과 다른 값(예: 시험 실행용 임시 폴더)으로 주면, 스크립트는 사용자 전역 파일(Claude/Codex 훅, 스킬 링크, CLI 링크)을 **건드리지 않고** 그 폴더 아래에 `state/`만 만듭니다. 그래도 전역 변경을 적용하려면 `--allow-custom-home`을 붙이세요. 시험 실행 때문에 실제 링크가 나중에 지워질 폴더를 가리키게 되는 사고를 막기 위한 것입니다.
+
+무언가 바꾸기 전에 인스턴스 홈부터 확인합니다. `models`에 적힌 provider 인스턴스마다 `t3_settings`에서 그 인스턴스의 홈을 읽고, 해당 설정 파일이나 Codex 홈이 `claude_settings` / `codex_homes`에 없으면 `WARNING`을 출력합니다. 래퍼(CPA·프록시) 인스턴스는 보통 자기 홈을 따로 쓰는데, 빠뜨리면 그 세션에는 역할 규칙이 조용히 들어가지 않습니다.
 
 바꾸는 것(각 단계는 이미 적용되어 있으면 "already ..." 계열로 출력하고 아무것도 하지 않습니다):
 

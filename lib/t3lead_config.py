@@ -12,7 +12,7 @@ Remote computers (T3 linked environments) go under "remotes", keyed by a short n
 environmentId and projectId are required per entry; label and every models key are optional (a missing model
 row is inherited from the local models). No "remotes" key means no remote computers.
 
-CLI (used by install.sh):  t3lead_config.py shell | json
+CLI (used by install.sh):  t3lead_config.py shell | json | check
 """
 import json, os, pwd, re, shlex, sys
 
@@ -163,9 +163,65 @@ def load(use_file=True):
         "codex_bin": p(codex_bin) if codex_bin else None,
         "skill_dirs": plist("skill_dirs", os.path.join(real_home, ".claude", "skills")),
         "cli_link": p(raw["cli_link"]) if raw.get("cli_link") else os.path.join(real_home, ".local", "bin", "t3lead"),
+        "t3_settings": p(raw["t3_settings"]) if raw.get("t3_settings") else os.path.join(real_home, ".t3", "userdata", "settings.json"),
         "models": models,
         "remotes": remotes,
     }
+
+
+def check_instance_homes(cfg):
+    """Compare the homes of the T3 provider instances named in the local models rows with claude_settings /
+    codex_homes. Returns (notes, warnings). A wrapped instance (a CPA or proxy instance) usually has its own
+    home; if that home is missing from config.json the hook is never installed there and its sessions get no
+    role rules."""
+    notes, warns = [], []
+    path = cfg["t3_settings"]
+    try:
+        with open(path) as f:
+            insts = json.load(f).get("providerInstances") or {}
+    except FileNotFoundError:
+        return ["T3 settings not found (%s); instance homes not checked (set t3_settings in config.json)" % path], []
+    except Exception as e:
+        return ["cannot read T3 settings %s: %s; instance homes not checked" % (path, e)], []
+    m = cfg["models"]
+    used = [m["lead"], m["verifier"], *m["gpt_lanes"], m["gpt_lane_refusal_prone"], m["claude_lane"], m["light_lane"]]
+    claude = {os.path.realpath(x) for x in cfg["claude_settings"]}
+    codex = {os.path.realpath(x) for x in cfg["codex_homes"]}
+    seen = set()
+    for row in used:
+        name = row["instance"]
+        if name in seen:
+            continue
+        seen.add(name)
+        inst = insts.get(name)
+        if inst is None:
+            # built-in instances (claudeAgent / codex) may have no entry; they use the default homes
+            driver, home = name, None
+            if name not in ("claudeAgent", "codex"):
+                warns.append("instance %r (in models) is not in T3 settings %s; check the instance ID" % (name, path))
+                continue
+        else:
+            driver = inst.get("driver")
+            home = (inst.get("config") or {}).get("homePath") or None
+            if inst.get("enabled") is False:
+                warns.append("instance %r (in models) is disabled in T3 settings" % name)
+        if driver == "claudeAgent":
+            want = os.path.join(home or os.path.join(cfg["real_home"], ".claude"), "settings.json")
+            if os.path.realpath(want) not in claude:
+                warns.append('instance %r reads %s, which is not in claude_settings; add it to config.json and re-run '
+                             'install.sh, or its sessions get no role rules' % (name, want))
+            else:
+                notes.append("instance %r: claude settings %s covered" % (name, want))
+        elif driver == "codex":
+            want = home or os.path.join(cfg["real_home"], ".codex")
+            if os.path.realpath(want) not in codex:
+                warns.append('instance %r uses CODEX_HOME %s, which is not in codex_homes; add it to config.json and '
+                             're-run install.sh, or its sessions get no role rules' % (name, want))
+            else:
+                notes.append("instance %r: codex home %s covered" % (name, want))
+        else:
+            notes.append("instance %r: driver %r not checked" % (name, driver))
+    return notes, warns
 
 
 def _fmt(x):
@@ -244,5 +300,9 @@ if __name__ == "__main__":
         print(_shell(cfg))
     elif mode == "json":
         print(json.dumps(cfg, ensure_ascii=False, indent=2))
+    elif mode == "check":
+        notes, warns = check_instance_homes(cfg)
+        for n in notes: print("  " + n)
+        for w in warns: print("  WARNING: " + w)
     else:
-        print("usage: t3lead_config.py shell|json", file=sys.stderr); sys.exit(2)
+        print("usage: t3lead_config.py shell|json|check", file=sys.stderr); sys.exit(2)
