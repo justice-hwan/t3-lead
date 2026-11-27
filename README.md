@@ -99,6 +99,7 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 | `codex_bin` | `codex` found on `~/.local/bin` or `PATH` | Codex binary used to read the hook trust hash |
 | `skill_dirs` | `["~/.claude/skills"]` | skill folders; `t3-lead` is linked into each |
 | `cli_link` | `~/.local/bin/t3lead` | where the CLI symlink goes |
+| `heavy_groups` | none | heavy-resource queues on this computer, `{"gpu": 1, "cpu": 2}` (group name → slots); see Heavy resources |
 | `owner_rules_dir` | none | a clone of your private shared-rules repository (see Owner rules); unset means this computer's rules only |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3's settings, read only to check that every instance in `models` has its home covered |
 | `models` | see below | provider instance and model per role |
@@ -145,6 +146,10 @@ t3lead task show <id>                       full JSON of one request
 t3lead rule add [--shared] "<rule>"         add an owner rule (--shared: all computers); the hook injects every rule
                                             into every verifier and lane
 t3lead rule list | rm S<n>|L<n> | sync      list owner rules / remove one / pull and push the shared rules
+t3lead heavy --group G [--label L] [--max-wait S] -- <cmd ...>
+                                            run cmd when a slot in heavy group G is free (FIFO; exit code passes through,
+                                            75 if --max-wait ran out)
+t3lead heavy status                         holders and waiters per group
 t3lead learn "<one-line lesson>" [--kind K] append a lesson (default kind: general)
 t3lead lessons [--kind K]                   list lessons (a kind also includes general)
 t3lead status                               short summary to read after a restart
@@ -165,6 +170,10 @@ Each role's provider instance and model come from `models` in `config.json` (see
 ## Remote computers
 
 To run lanes on another computer linked to T3 Code: install t3-lead there too (its hook injects the lane rules), add the computer under `remotes` on the lead's machine, and tell the lead which one to use. The lead uses a remote only when you name it or agree to it (for example when local resources run short, it asks first). It writes `where: <name>` in the verifier brief; the verifier creates the lane with that remote's `environmentId`, `projectId` and models, starts every message to it with the `t3-lead-ref` line, and allows extra time before the deadline alarm. Completion notifications come back as for local lanes. See `docs/agent-install.md` step 7.
+
+## Heavy resources
+
+Lanes run in parallel, but a GPU, a disk or a test server often fits one job at a time. Set `heavy_groups` in `config.json` (for example `{"gpu": 1, "test-server": 1, "cpu": 2}`) and lanes run such commands as `t3lead heavy --group gpu -- <command>`: the command starts when a slot is free, in arrival order across every session on the computer, and holds the slot until it exits. A caller that dies frees its slot at once (its process is gone) or within 60 s (stale heartbeat). With groups configured, the lane rules tell lanes how to use the queue; which work belongs to which group is up to you (put it in briefs or owner rules). The queue is per computer and does not look at real GPU load, so work started outside it is not seen.
 
 ## Owner rules
 

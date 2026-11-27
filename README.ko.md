@@ -99,6 +99,7 @@ $EDITOR config.json
 | `codex_bin` | `~/.local/bin`과 `PATH`에서 찾은 `codex` | 훅 신뢰 해시를 읽는 데 쓰는 Codex 실행 파일 |
 | `skill_dirs` | `["~/.claude/skills"]` | 스킬 폴더들. 각각에 `t3-lead`를 링크 |
 | `cli_link` | `~/.local/bin/t3lead` | CLI 심볼릭 링크 위치 |
+| `heavy_groups` | 없음 | 이 컴퓨터의 무거운 자원 대기열, `{"gpu": 1, "cpu": 2}`(그룹 이름 → 자리 수). 무거운 자원 절 참고 |
 | `owner_rules_dir` | 없음 | 비공개 공용 규칙 저장소를 clone한 경로(소유자 규칙 절 참고). 없으면 이 컴퓨터 규칙만 씀 |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3 설정 파일. `models`의 각 인스턴스가 쓰는 홈이 설정에 들어 있는지 확인할 때만 읽음 |
 | `models` | 아래 참고 | 역할별 provider 인스턴스와 모델 |
@@ -145,6 +146,10 @@ t3lead task show <id>                       요청 하나의 전체 JSON
 t3lead rule add [--shared] "<규칙>"         소유자 규칙 추가(--shared: 모든 컴퓨터 공용). 훅이 모든 규칙을
                                             업무 확인 세션과 레인마다 넣음
 t3lead rule list | rm S<n>|L<n> | sync      규칙 목록 / 하나 삭제 / 공용 규칙 받기·올리기
+t3lead heavy --group G [--label L] [--max-wait S] -- <명령 ...>
+                                            heavy 그룹 G에 빈 자리가 나면 명령 실행(도착 순서. 종료 코드는 그대로,
+                                            --max-wait 초과 시 75)
+t3lead heavy status                         그룹별 실행 중·대기 중 목록
 t3lead learn "<한 줄 교훈>" [--kind K]      교훈 추가 (기본 kind: general)
 t3lead lessons [--kind K]                   교훈 목록 (kind를 주면 general도 포함)
 t3lead status                               재시작 때 읽는 짧은 요약
@@ -165,6 +170,10 @@ t3lead remotes                              설정된 원격 컴퓨터 목록
 ## 원격 컴퓨터
 
 T3 Code에 연결된 다른 컴퓨터에서 레인을 돌리려면, 그 컴퓨터에도 t3-lead를 설치하고(그쪽 훅이 레인 규칙을 넣습니다), 리드가 있는 컴퓨터의 `remotes`에 등록한 뒤, 어느 컴퓨터를 쓸지 리드에게 말하세요. 리드는 사용자가 그 컴퓨터를 지정했거나 동의했을 때만 원격을 씁니다(예: 로컬 자원이 모자라면 먼저 물어봅니다). 리드는 verifier 브리프에 `where: <이름>`을 적고, verifier는 그 원격의 `environmentId`, `projectId`, 모델로 레인을 만들며, 보내는 모든 메시지를 `t3-lead-ref` 줄로 시작하고, 마감 알람에 여유를 더 둡니다. 완료 알림은 로컬 레인과 같이 돌아옵니다. `docs/agent-install.md` 7단계를 보세요.
+
+## 무거운 자원
+
+레인은 병렬로 돌지만 GPU, 디스크, 시험 서버는 한 번에 한 작업만 감당하는 경우가 많습니다. `config.json`에 `heavy_groups`(예: `{"gpu": 1, "test-server": 1, "cpu": 2}`)를 적으면 레인이 그런 명령을 `t3lead heavy --group gpu -- <명령>`으로 실행합니다. 자리가 나면 이 컴퓨터의 모든 세션을 통틀어 도착 순서대로 시작하고, 명령이 끝날 때까지 자리를 잡고 있습니다. 호출한 쪽이 죽으면 자리는 바로(프로세스가 없어짐) 또는 60초 안에(heartbeat 만료) 풀립니다. 그룹이 설정되면 레인 규칙에 사용법이 들어가고, 어떤 일이 어느 그룹인지는 사용자가 정합니다(브리프나 소유자 규칙에). 대기열은 컴퓨터별이고 실제 GPU 사용량은 보지 않으므로, 대기열 밖에서 시작한 작업은 알지 못합니다.
 
 ## 소유자 규칙
 

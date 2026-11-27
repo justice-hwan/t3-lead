@@ -149,6 +149,10 @@ def load(use_file=True):
     models = _models(m, "models", DEFAULT_MODELS)
     remotes = _remotes(raw, models)
 
+    hg = raw.get("heavy_groups") or {}
+    if not isinstance(hg, dict) or not all(re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", k) and isinstance(v, int)
+                                           and not isinstance(v, bool) and v >= 1 for k, v in hg.items()):
+        raise ConfigError("heavy_groups must map group names (letters, digits, . _ -) to slot counts >= 1")
     wrapper = raw.get("claude_wrapper")
     codex_bin = raw.get("codex_bin")
     return {
@@ -167,6 +171,7 @@ def load(use_file=True):
         "t3_settings": p(raw["t3_settings"]) if raw.get("t3_settings") else os.path.join(real_home, ".t3", "userdata", "settings.json"),
         "models": models,
         "remotes": remotes,
+        "heavy_groups": dict(hg),
     }
 
 
@@ -279,16 +284,21 @@ def template_vars(cfg):
         "claude_lane": _fmt(m["claude_lane"]),
         "light_lane": _fmt(m["light_lane"]),
         "remote_list": remote_list(cfg),
+        "t3lead": cfg["cli_link"],
+        "heavy_list": ", ".join("`%s` (%d slot%s)" % (g, n, "" if n == 1 else "s")
+                                for g, n in sorted(cfg.get("heavy_groups", {}).items())),
     }
 
 
 def render(text, cfg):
     """Replace {{name}} placeholders; an unknown placeholder is left as written.
-    A {{#remotes}}...{{/remotes}} block is kept (markers removed) only when remotes are configured."""
-    if cfg.get("remotes"):
-        text = text.replace("{{#remotes}}", "").replace("{{/remotes}}\n", "").replace("{{/remotes}}", "")
-    else:
-        text = re.sub(r"\{\{#remotes\}\}.*?\{\{/remotes\}\}\n?", "", text, flags=re.S)
+    A {{#remotes}}...{{/remotes}} block is kept (markers removed) only when remotes are configured, and a
+    {{#heavy}}...{{/heavy}} block only when heavy_groups is."""
+    for block, on in (("remotes", bool(cfg.get("remotes"))), ("heavy", bool(cfg.get("heavy_groups")))):
+        if on:
+            text = text.replace("{{#%s}}" % block, "").replace("{{/%s}}\n" % block, "").replace("{{/%s}}" % block, "")
+        else:
+            text = re.sub(r"\{\{#%s\}\}.*?\{\{/%s\}\}\n?" % (block, block), "", text, flags=re.S)
     for k, v in template_vars(cfg).items():
         text = text.replace("{{%s}}" % k, v)
     return text

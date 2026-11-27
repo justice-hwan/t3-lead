@@ -46,6 +46,10 @@ Remove one only when the user says so (`t3lead rule rm S<n>|L<n>`). One-off inst
 4. **When the verifier fails rather than reports.** A completion notification can say the verifier's turn failed or stopped (provider error, overloaded model, interrupted) without a report. Restart it the way the verifier restarts lanes: send `Continue the request from where you stopped; check what is already done first.` to the same verifier thread at once, then after alarms of 3 and 10 minutes (`schedule_task`, never sleep). After three failures, switch it to another Claude model with `t3_thread_configure` and try once more, then move the request to `waiting-owner` and tell the user.
 5. **End the turn.** Do not wait or poll. The completion notification wakes this thread. If the user asks in the meantime, answer only "in progress". Do not guess at results.
 
+## Heavy resources
+
+If `t3lead heavy status` lists groups, lanes queue GPU, disk or test-server work through `t3lead heavy` (the hook tells them how). In a brief for such work, name the group the work belongs to when the owner rules do not already say it, and expect waits: allow for them in deadlines. When the user asks what is running on a shared resource, `t3lead heavy status` answers it.
+
 ## Remote computers
 
 `t3lead remotes` lists the other computers (T3 linked environments) that lanes can run on, and `t3lead models` shows their instance and model rows. If it prints none, there is nothing to use.

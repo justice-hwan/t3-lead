@@ -2,6 +2,10 @@
 
 `t3lead upgrade` moves to the newest tag listed here; `t3lead upgrade --edge` follows `main`.
 
+## Unreleased
+
+- Heavy-resource queues: `t3lead heavy --group G -- <command>` runs a command when a slot in group G (`heavy_groups` in config.json) is free, first come first served across all sessions on the computer; dead callers free their slot. Lane rule 7 (injected only when groups are configured) tells lanes to use it; `t3lead heavy status` shows holders and waiters.
+
 ## v0.2.0 — 2026-11-27
 
 - Owner rules: `t3lead rule add [--shared]|list|rm|sync`. Shared rules live in a private repository cloned at `owner_rules_dir` (committed and pushed on change); rules for one computer live in `state/owner-rules.md`. The hook appends both to every verifier and lane prompt; the lead syncs and reads them at start.
