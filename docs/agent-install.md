@@ -65,7 +65,7 @@ Only when the user wants lanes to run on another computer linked to T3 (a linked
 
 ## 7b. Shared owner rules (optional)
 
-If the user keeps a private shared-rules repository (ask; for example `<their account>/t3-lead-owner`), clone it next to t3-lead (for example `<real home>/.t3-lead-owner`) with credentials that can push, set `"owner_rules_dir"` in `config.json` to that path, and check that `t3lead rule list` shows its rules under "shared". Do this on lane-only computers too: lanes get the rules of the computer they run on.
+If the user keeps a private shared-rules repository (ask; for example `<their account>/t3-lead-owner`), clone it next to t3-lead (for example `<real home>/.t3-lead-owner`) with credentials that can push, set `"owner_rules_dir"` in `config.json` to that path, and check that `t3lead rule list` shows its rules under "shared". Then run `t3lead rule sync` from a T3 thread: sessions there often have a different `$HOME`, so git may not find the user's credentials (SSH key or `gh` login). If sync fails for that reason, point that clone's git config at the existing credentials (for example a repo-local `credential.helper` or `core.sshCommand` using files under the real home); do not create new keys or tokens. Do this on lane-only computers too: lanes get the rules of the computer they run on.
 
 ## 8. Hand over to the user
 
