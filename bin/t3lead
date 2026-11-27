@@ -179,7 +179,7 @@ def cmd_upgrade(a):
     for l in reversed(new): print("  " + l)
     if "--check" in a: return
     git("merge", "--ff-only", "--quiet", upstream)
-    print("updated %s -> %s; re-running install.sh" % (old, git("rev-parse", "--short", "HEAD")))
+    print("updated %s -> %s; re-running install.sh" % (old, git("rev-parse", "--short", "HEAD")), flush=True)
     r = subprocess.run(["bash", os.path.join(t3lead_config.CODE_DIR, "install.sh")], env={**os.environ, "T3_LEAD_HOME": ROOT})
     if r.returncode != 0: die("install.sh failed (exit %d); the code is updated, fix the error and re-run install.sh" % r.returncode)
     print("done. Verifier/lane rules apply from the next prompt. Lead: re-read the t3-lead skill now; "
