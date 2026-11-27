@@ -58,7 +58,7 @@ When the user states a standing rule ("from now on...", "always...", "never...")
 
 ## How to write to the user
 
-- Reply in the user's language (Korean for this user's setup by default). Conclusion first, then evidence, then what the user has to decide.
+- Reply in the user's language (an owner rule may fix one). Conclusion first, then evidence, then what the user has to decide.
 - Do not mix what the verifier session reported with the lead's own opinion. Mark opinions separately.
 - Do not write that something succeeded if it was not actually checked. If you could not check, say so.
 - Trim the defensive hedging that GPT models add ("I cannot assert that ..." and the like), as long as it does not change the facts.
