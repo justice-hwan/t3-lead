@@ -1,0 +1,26 @@
+{
+  "_comment": "Copy to config.json and edit. Every key is optional; a missing key falls back to the default shown in the README. A leading ~ means the real home (from the passwd database, not $HOME).",
+
+  "real_home": "/home/you",
+  "home": "~/.t3-lead",
+
+  "claude_settings": ["~/.claude/settings.json"],
+  "claude_wrapper": null,
+  "codex_homes": ["~/.codex"],
+  "codex_bin": null,
+  "skill_dirs": ["~/.claude/skills"],
+  "cli_link": "~/.local/bin/t3lead",
+
+  "models": {
+    "lead":     {"instance": "claudeAgent", "model": "claude-opus-5-5"},
+    "verifier": {"instance": "claudeAgent", "model": "claude-sonnet-5-5"},
+    "gpt_lanes": [
+      {"instance": "codex", "model": "gpt-6.1-terra"},
+      {"instance": "codex", "model": "gpt-6.1-sol"},
+      {"instance": "codex", "model": "gpt-6.2-astra"}
+    ],
+    "gpt_lane_refusal_prone": {"instance": "codex", "model": "gpt-6.2-sol"},
+    "claude_lane": {"instance": "claudeAgent", "model": "claude-sonnet-5-5"},
+    "light_lane":  {"instance": "claudeAgent", "model": "claude-haiku-5-5"}
+  }
+}

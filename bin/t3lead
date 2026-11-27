@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""t3-lead state CLI: lead registration, request ledger, lessons, summary.
+
+  t3lead init                          register this thread (T3CODE_THREAD_ID) as the lead
+  t3lead task add "<request>" [--source S]   record a request, print its ID
+  t3lead task move <id> <state> [--note N] [--verifier THREAD]
+        states: open working waiting-owner delivered done dropped
+  t3lead task list [--all]             unfinished requests (default) / all requests
+  t3lead task show <id>
+  t3lead learn "<one-line lesson>" [--kind K]
+  t3lead lessons [--kind K]
+  t3lead status                        ~20-line summary for the lead to read after a restart
+  t3lead models                        provider instance / model per role, from config.json (or defaults)
+"""
+import json, os, secrets, subprocess, sys, time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "lib"))
+import t3lead_config
+
+try:
+    CFG = t3lead_config.load()
+except t3lead_config.ConfigError as e:
+    print("t3lead config error: %s" % e, file=sys.stderr); sys.exit(2)
+ROOT = CFG["home"]
+STATE = os.path.join(ROOT, "state")
+TASKS = os.path.join(STATE, "tasks")
+LESSONS = os.path.join(STATE, "lessons.jsonl")
+STATES = ["open", "working", "waiting-owner", "delivered", "done", "dropped"]
+OPEN = {"open", "working", "waiting-owner", "delivered"}
+
+now = lambda: time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def die(msg):
+    print(msg, file=sys.stderr); sys.exit(2)
+
+
+def opt(args, name, default=None):
+    if name in args:
+        i = args.index(name)
+        if i + 1 >= len(args): die(f"missing value for {name}")
+        v = args[i + 1]; del args[i:i + 2]; return v
+    return default
+
+
+def save(t):
+    os.makedirs(TASKS, exist_ok=True)
+    p = os.path.join(TASKS, t["id"] + ".json"); tmp = p + ".tmp"
+    with open(tmp, "w") as f: json.dump(t, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, p)
+
+
+def load(tid):
+    p = os.path.join(TASKS, tid + ".json")
+    if not os.path.exists(p): die(f"request {tid} not found")
+    return json.load(open(p))
+
+
+def all_tasks():
+    if not os.path.isdir(TASKS): return []
+    out = [json.load(open(os.path.join(TASKS, f))) for f in sorted(os.listdir(TASKS)) if f.endswith(".json")]
+    return sorted(out, key=lambda t: t["created"])
+
+
+def cmd_task(a):
+    if not a: die("task add|move|list|show")
+    sub, a = a[0], a[1:]
+    if sub == "add":
+        src = opt(a, "--source", "chat")
+        if not a: die("give the request text")
+        t = {"id": "t-" + secrets.token_hex(2), "text": " ".join(a), "source": src, "state": "open",
+             "created": now(), "verifier": None, "history": [[now(), "open", ""]]}
+        save(t); print(t["id"])
+    elif sub == "move":
+        note = opt(a, "--note", ""); ver = opt(a, "--verifier")
+        if len(a) != 2 or a[1] not in STATES: die(f"task move <id> <{'|'.join(STATES)}>")
+        t = load(a[0]); t["state"] = a[1]
+        if ver: t["verifier"] = ver
+        t["history"].append([now(), a[1], note]); save(t); print(f"{t['id']} -> {a[1]}")
+    elif sub == "list":
+        show_all = "--all" in a
+        for t in all_tasks():
+            if show_all or t["state"] in OPEN:
+                print(f"{t['id']}  {t['state']:<13} {t['created'][5:16]}  {t['text'][:60]}")
+    elif sub == "show":
+        print(json.dumps(load(a[0]), ensure_ascii=False, indent=1))
+    else:
+        die("task add|move|list|show")
+
+
+def cmd_learn(a):
+    kind = opt(a, "--kind", "general")
+    if not a: die("give a one-line lesson")
+    os.makedirs(STATE, exist_ok=True)
+    with open(LESSONS, "a") as f:
+        f.write(json.dumps({"at": now(), "kind": kind, "text": " ".join(a)}, ensure_ascii=False) + "\n")
+    print("recorded")
+
+
+def lessons(kind=None):
+    if not os.path.exists(LESSONS): return []
+    out = [json.loads(l) for l in open(LESSONS) if l.strip()]
+    return [x for x in out if not kind or x["kind"] in (kind, "general")]
+
+
+def cmd_status(_):
+    ts = all_tasks()
+    opn = [t for t in ts if t["state"] in OPEN]
+    first = [t for t in opn if t["state"] in ("waiting-owner", "delivered")]
+    print(f"requests: {len(opn)} open / {len(ts)} total")
+    if first:
+        print("look at first:")
+        for t in first:
+            why = "needs the user's answer" if t["state"] == "waiting-owner" else "finished but not yet reported"
+            print(f"  {t['id']} {why}: {t['text'][:50]}")
+    for t in opn:
+        if t not in first:
+            last = t["history"][-1]
+            print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {t['text'][:45]}")
+    ls = lessons()
+    if ls:
+        print(f"lessons: {len(ls)} (latest 3):")
+        for x in ls[-3:]: print(f"  [{x['kind']}] {x['text'][:70]}")
+
+
+def cmd_models(_):
+    m = CFG["models"]
+    rows = [("lead", m["lead"]), ("verifier", m["verifier"])]
+    rows += [("gpt lane #%d%s" % (n + 1, " (default)" if n == 0 else ""), x) for n, x in enumerate(m["gpt_lanes"])]
+    rows += [("gpt lane (refusal-prone)", m["gpt_lane_refusal_prone"]), ("claude lane", m["claude_lane"]),
+             ("light lane", m["light_lane"])]
+    w = max(len(r[0]) for r in rows)
+    for name, x in rows:
+        print(f"{name:<{w}}  {x['instance']} / {x['model']}")
+    print(f"(config: {CFG['config_path'] if CFG['config_found'] else 'none, built-in defaults'})")
+
+
+def cmd_init(_):
+    tid = os.environ.get("T3CODE_THREAD_ID")
+    if not tid: die("T3CODE_THREAD_ID is not set. Run this inside a T3 thread")
+    out = subprocess.run([sys.executable, os.path.join(t3lead_config.CODE_DIR, "hooks", "role.py"), "--register-lead", tid],
+                         env={**os.environ, "T3_LEAD_HOME": ROOT}, capture_output=True, text=True)
+    print(out.stdout.strip() or out.stderr.strip())
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help"): print(__doc__); return
+    {"task": cmd_task, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models,
+     "lessons": lambda r: [print(f"[{x['kind']}] {x['text']}") for x in lessons(opt(r, "--kind"))]
+     }.get(a[0], lambda _: die(__doc__))(a[1:])
+
+
+if __name__ == "__main__":
+    main()
