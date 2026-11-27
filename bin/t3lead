@@ -8,8 +8,10 @@
         --where: which remote computer runs the lanes (a name from `t3lead remotes`); `--where -` clears it
   t3lead task list [--all]             unfinished requests (default) / all requests
   t3lead task show <id>
-  t3lead rule add "<standing user rule>"   add a rule the hook injects into every verifier and lane
-  t3lead rule list | rm <n>               list the owner rules / remove rule number n
+  t3lead rule add [--shared] "<rule>"    add a standing user rule; the hook injects every rule into all
+                                          verifiers and lanes. --shared: the private shared-rules repository
+                                          (owner_rules_dir, all computers); default: this computer only
+  t3lead rule list | rm S<n>|L<n> | sync  list rules / remove one / pull and push the shared rules
   t3lead learn "<one-line lesson>" [--kind K]
   t3lead lessons [--kind K]
   t3lead status                        ~20-line summary for the lead to read after a restart
@@ -34,7 +36,6 @@ ROOT = CFG["home"]
 STATE = os.path.join(ROOT, "state")
 TASKS = os.path.join(STATE, "tasks")
 LESSONS = os.path.join(STATE, "lessons.jsonl")
-RULES = os.path.join(STATE, "owner-rules.md")
 STATES = ["open", "working", "waiting-owner", "delivered", "done", "dropped"]
 OPEN = {"open", "working", "waiting-owner", "delivered"}
 
@@ -116,33 +117,85 @@ def cmd_task(a):
         die("task add|move|list|show")
 
 
-def read_rules():
-    if not os.path.exists(RULES): return []
-    return [l[2:].strip() if l.startswith("- ") else l.strip() for l in open(RULES) if l.strip()]
+def rule_sets():
+    return t3lead_config.owner_rule_sets(CFG)
 
 
-def write_rules(rs):
-    os.makedirs(STATE, exist_ok=True); tmp = RULES + ".tmp"
+def write_rule_file(path, rs):
+    os.makedirs(os.path.dirname(path), exist_ok=True); tmp = path + ".tmp"
     with open(tmp, "w") as f: f.write("".join("- %s\n" % r for r in rs))
-    os.replace(tmp, RULES)
+    os.replace(tmp, path)
+
+
+def shared_git(*args, check=True):
+    r = subprocess.run(["git", "-C", CFG["owner_rules_dir"], *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise RuntimeError("git %s: %s" % (" ".join(args), (r.stderr or r.stdout).strip()))
+    return r.stdout.strip()
+
+
+def shared_sync(quiet=False):
+    """Pull the shared rules (rebase local commits) and push anything not yet pushed. Returns True on success."""
+    try:
+        shared_git("pull", "--rebase", "--quiet")
+        ahead = shared_git("rev-list", "--count", "@{upstream}..HEAD", check=False)
+        if ahead and ahead != "0": shared_git("push", "--quiet")
+        if not quiet: print("shared rules synced (%s)" % shared_git("log", "-1", "--format=%h %cs"))
+        return True
+    except RuntimeError as e:
+        print("warning: shared rules not synced: %s\n  the change is kept locally; run `t3lead rule sync` later" % e, file=sys.stderr)
+        return False
+
+
+def shared_commit(path, msg):
+    try:
+        shared_git("add", os.path.basename(path)); shared_git("commit", "--quiet", "-m", msg)
+    except RuntimeError as e:
+        print("warning: %s" % e, file=sys.stderr); return
+    shared_sync(quiet=True)
 
 
 def cmd_rule(a):
     sub = a[0] if a else "list"
-    rs = read_rules()
+    sets = rule_sets()
     if sub == "add":
+        shared = "--shared" in a
+        a = [x for x in a if x != "--shared"]
         text = " ".join(a[1:]).strip()
         if not text: die("give the rule text")
         if "\n" in text: die("one line per rule")
-        rs.append("%s (%s)" % (text, now()[:10])); write_rules(rs); print("rule %d added" % len(rs))
+        if shared and not CFG["owner_rules_dir"]: die("no owner_rules_dir in config.json; shared rules are not set up")
+        label, prefix, path, rs = sets[0] if shared else sets[-1]
+        if shared: shared_sync(quiet=True)
+        rs = t3lead_config.read_rule_file(path)
+        rs.append("%s (%s)" % (text, now()[:10])); write_rule_file(path, rs)
+        if shared: shared_commit(path, "Add rule: " + text[:60])
+        print("rule %s%d added (%s)" % (prefix, len(rs), label))
     elif sub == "list":
-        if not rs: print("no owner rules (add with: t3lead rule add \"...\")")
-        for n, r in enumerate(rs, 1): print("%d. %s" % (n, r))
+        for label, prefix, path, rs in sets:
+            print("%s  [%s]" % (label, path))
+            if not rs: print("  (none)")
+            for n, r in enumerate(rs, 1): print("  %s%d. %s" % (prefix, n, r))
+        if not CFG["owner_rules_dir"]:
+            print("(shared rules not set up: set owner_rules_dir in config.json)")
     elif sub == "rm":
-        if len(a) != 2 or not a[1].isdigit() or not 1 <= int(a[1]) <= len(rs): die("rule rm <number from rule list>")
-        r = rs.pop(int(a[1]) - 1); write_rules(rs); print("removed: " + r)
+        if len(a) != 2: die("rule rm <S<n>|L<n>> (from rule list)")
+        key = a[1].upper()
+        if key.isdigit(): key = "L" + key
+        match = [x for x in sets if x[1] == key[0]]
+        if not match or not key[1:].isdigit(): die("rule rm <S<n>|L<n>> (from rule list)")
+        label, prefix, path, rs = match[0]
+        if prefix == "S": shared_sync(quiet=True); rs = t3lead_config.read_rule_file(path)
+        n = int(key[1:])
+        if not 1 <= n <= len(rs): die("no rule %s" % key)
+        r = rs.pop(n - 1); write_rule_file(path, rs)
+        if prefix == "S": shared_commit(path, "Remove rule: " + r[:60])
+        print("removed (%s): %s" % (label, r))
+    elif sub == "sync":
+        if not CFG["owner_rules_dir"]: die("no owner_rules_dir in config.json; shared rules are not set up")
+        shared_sync()
     else:
-        die("rule add|list|rm")
+        die("rule add [--shared]|list|rm|sync")
 
 
 def cmd_learn(a):
@@ -174,9 +227,9 @@ def cmd_status(_):
         if t not in first:
             last = t["history"][-1]
             print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {at(t)}{t['text'][:45]}")
-    rs = read_rules()
-    if rs:
-        print(f"owner rules: {len(rs)} (`t3lead rule list`)")
+    n_rules = sum(len(x[3]) for x in rule_sets())
+    if n_rules:
+        print(f"owner rules: {n_rules} (`t3lead rule list`)")
     ls = lessons()
     if ls:
         print(f"lessons: {len(ls)} (latest 3):")

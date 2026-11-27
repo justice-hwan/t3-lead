@@ -99,6 +99,7 @@ $EDITOR config.json
 | `codex_bin` | `~/.local/bin`과 `PATH`에서 찾은 `codex` | 훅 신뢰 해시를 읽는 데 쓰는 Codex 실행 파일 |
 | `skill_dirs` | `["~/.claude/skills"]` | 스킬 폴더들. 각각에 `t3-lead`를 링크 |
 | `cli_link` | `~/.local/bin/t3lead` | CLI 심볼릭 링크 위치 |
+| `owner_rules_dir` | 없음 | 비공개 공용 규칙 저장소를 clone한 경로(소유자 규칙 절 참고). 없으면 이 컴퓨터 규칙만 씀 |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3 설정 파일. `models`의 각 인스턴스가 쓰는 홈이 설정에 들어 있는지 확인할 때만 읽음 |
 | `models` | 아래 참고 | 역할별 provider 인스턴스와 모델 |
 | `remotes` | 없음 | 레인을 돌릴 수 있는 다른 컴퓨터(T3 linked environment). 아래 참고 |
@@ -141,8 +142,9 @@ t3lead task move <id> <상태> [--note N] [--verifier THREAD] [--where R]
         --where: 레인을 돌리는 원격 컴퓨터(`t3lead remotes`의 이름; `-`는 해제)
 t3lead task list [--all]                    끝나지 않은 요청(기본) / 전체
 t3lead task show <id>                       요청 하나의 전체 JSON
-t3lead rule add "<상시 규칙>"                소유자 규칙 추가. 훅이 모든 업무 확인 세션과 레인에 함께 넣음
-t3lead rule list | rm <n>                   소유자 규칙 목록 / 하나 삭제
+t3lead rule add [--shared] "<규칙>"         소유자 규칙 추가(--shared: 모든 컴퓨터 공용). 훅이 모든 규칙을
+                                            업무 확인 세션과 레인마다 넣음
+t3lead rule list | rm S<n>|L<n> | sync      규칙 목록 / 하나 삭제 / 공용 규칙 받기·올리기
 t3lead learn "<한 줄 교훈>" [--kind K]      교훈 추가 (기본 kind: general)
 t3lead lessons [--kind K]                   교훈 목록 (kind를 주면 general도 포함)
 t3lead status                               재시작 때 읽는 짧은 요약
@@ -163,6 +165,20 @@ t3lead remotes                              설정된 원격 컴퓨터 목록
 ## 원격 컴퓨터
 
 T3 Code에 연결된 다른 컴퓨터에서 레인을 돌리려면, 그 컴퓨터에도 t3-lead를 설치하고(그쪽 훅이 레인 규칙을 넣습니다), 리드가 있는 컴퓨터의 `remotes`에 등록한 뒤, 어느 컴퓨터를 쓸지 리드에게 말하세요. 리드는 사용자가 그 컴퓨터를 지정했거나 동의했을 때만 원격을 씁니다(예: 로컬 자원이 모자라면 먼저 물어봅니다). 리드는 verifier 브리프에 `where: <이름>`을 적고, verifier는 그 원격의 `environmentId`, `projectId`, 모델로 레인을 만들며, 보내는 모든 메시지를 `t3-lead-ref` 줄로 시작하고, 마감 알람에 여유를 더 둡니다. 완료 알림은 로컬 레인과 같이 돌아옵니다. `docs/agent-install.md` 7단계를 보세요.
+
+## 소유자 규칙
+
+지시사항은 세 종류로 나눠 둡니다.
+
+| 종류 | 예 | 위치 |
+|---|---|---|
+| 누구에게나 같은 t3-lead 동작 | 실패한 레인 재시작, 완료 주장 검증 | 이 저장소(`rules/`, `skill/`) |
+| 모든 컴퓨터에 적용할 내 규칙 | "main push는 내 승인 후에만" | 내 **비공개** 저장소(`owner_rules_dir`에 clone, `rules.md`) |
+| 한 컴퓨터에만 적용할 내 규칙 | "여기서 X 컴퓨터로 일을 돌리지 마" | 그 컴퓨터의 `state/owner-rules.md` |
+
+훅은 두 종류의 소유자 규칙을 모든 업무 확인 세션과 레인 프롬프트에 붙이고, 리드는 시작할 때 읽습니다(`t3lead rule sync`, `t3lead rule list`). 상시 규칙을 말하면 리드가 `t3lead rule add [--shared]`로 기록합니다. 공용 규칙은 비공개 저장소에 커밋·push되고, 다른 컴퓨터는 다음 `t3lead rule sync` 때 받아 갑니다.
+
+공용 규칙 설정: `rules.md`(한 줄에 `- <규칙>` 하나)가 있는 비공개 저장소를 만들고, 컴퓨터마다 clone한 뒤 `config.json`에 `owner_rules_dir`를 적습니다. 원격 컴퓨터의 레인은 그 컴퓨터의 규칙을 받으므로 그쪽에도 설정하세요.
 
 ## 알려진 제약
 

@@ -19,11 +19,17 @@ The rules for verifier sessions and lanes are injected by the t3-lead `hooks/rol
 
 1. Once, register this thread as the lead with `t3lead init` (the CLI link the installer puts on PATH; inside T3, `$HOME` and `~` may point to a provider-specific home, so do not spell out `~/.t3-lead/...` paths). For children of an unregistered thread the hook injects nothing.
 2. After a restart or context compaction, read `t3lead status` before trusting memory. It shows the requests in progress and what to look at first.
-3. Read `t3lead rule list`: the user's standing rules. Follow them yourself; the hook also injects them into every verifier and lane, so do not copy them into briefs.
+3. Run `t3lead rule sync` (pulls the shared rules, if set up), then read `t3lead rule list`: the user's standing rules. Follow them yourself; the hook also injects them into every verifier and lane, so do not copy them into briefs.
 
 ## Owner rules
 
-When the user states a standing rule ("from now on...", "always...", "never..."), record it in one line with `t3lead rule add "<rule>"`, in the user's words but unambiguous, and confirm it to the user. Remove one only when the user says so (`t3lead rule rm <n>`). One-off instructions for a single request go in that request's brief, not here.
+When the user states a standing rule ("from now on...", "always...", "never..."), record it in one line, in the user's words but unambiguous, and confirm it to the user:
+
+- `t3lead rule add --shared "<rule>"` for a rule about how the user wants work done anywhere (approvals, commit style, language). It goes to the user's private shared-rules repository and reaches every computer.
+- `t3lead rule add "<rule>"` for a rule about this computer only (what may run here, which other computers this one may use, local paths or services).
+- If it is unclear which, ask the user with the two options.
+
+Remove one only when the user says so (`t3lead rule rm S<n>|L<n>`). One-off instructions for a single request go in that request's brief, not here. Rules about how t3-lead itself should behave for everyone are not owner rules: tell the user, and they go into the t3-lead repository.
 
 ## When a request arrives
 

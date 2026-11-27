@@ -163,6 +163,7 @@ def load(use_file=True):
         "codex_bin": p(codex_bin) if codex_bin else None,
         "skill_dirs": plist("skill_dirs", os.path.join(real_home, ".claude", "skills")),
         "cli_link": p(raw["cli_link"]) if raw.get("cli_link") else os.path.join(real_home, ".local", "bin", "t3lead"),
+        "owner_rules_dir": p(raw["owner_rules_dir"]) if raw.get("owner_rules_dir") else None,
         "t3_settings": p(raw["t3_settings"]) if raw.get("t3_settings") else os.path.join(real_home, ".t3", "userdata", "settings.json"),
         "models": models,
         "remotes": remotes,
@@ -222,6 +223,26 @@ def check_instance_homes(cfg):
         else:
             notes.append("instance %r: driver %r not checked" % (name, driver))
     return notes, warns
+
+
+def read_rule_file(path):
+    """Rules stored one per line as `- <rule>`; blank lines ignored. Missing file: no rules."""
+    try:
+        with open(path) as f:
+            return [l[2:].strip() if l.startswith("- ") else l.strip() for l in f if l.strip()]
+    except OSError:
+        return []
+
+
+def owner_rule_sets(cfg):
+    """[(label, prefix, path, rules)]: shared rules (owner_rules_dir/rules.md) first, then this computer's."""
+    out = []
+    if cfg.get("owner_rules_dir"):
+        p = os.path.join(cfg["owner_rules_dir"], "rules.md")
+        out.append(("shared (all computers)", "S", p, read_rule_file(p)))
+    p = os.path.join(cfg["home"], "state", "owner-rules.md")
+    out.append(("this computer only", "L", p, read_rule_file(p)))
+    return out
 
 
 def _fmt(x):

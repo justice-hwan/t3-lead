@@ -99,6 +99,7 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 | `codex_bin` | `codex` found on `~/.local/bin` or `PATH` | Codex binary used to read the hook trust hash |
 | `skill_dirs` | `["~/.claude/skills"]` | skill folders; `t3-lead` is linked into each |
 | `cli_link` | `~/.local/bin/t3lead` | where the CLI symlink goes |
+| `owner_rules_dir` | none | a clone of your private shared-rules repository (see Owner rules); unset means this computer's rules only |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3's settings, read only to check that every instance in `models` has its home covered |
 | `models` | see below | provider instance and model per role |
 | `remotes` | none | other computers (T3 linked environments) that lanes can run on; see below |
@@ -141,8 +142,9 @@ t3lead task move <id> <state> [--note N] [--verifier THREAD] [--where R]
         --where: remote computer that runs the lanes (a name from `t3lead remotes`; `-` clears it)
 t3lead task list [--all]                    unfinished requests (default) / all
 t3lead task show <id>                       full JSON of one request
-t3lead rule add "<standing rule>"           add an owner rule; the hook injects all of them into every verifier and lane
-t3lead rule list | rm <n>                   list owner rules / remove one
+t3lead rule add [--shared] "<rule>"         add an owner rule (--shared: all computers); the hook injects every rule
+                                            into every verifier and lane
+t3lead rule list | rm S<n>|L<n> | sync      list owner rules / remove one / pull and push the shared rules
 t3lead learn "<one-line lesson>" [--kind K] append a lesson (default kind: general)
 t3lead lessons [--kind K]                   list lessons (a kind also includes general)
 t3lead status                               short summary to read after a restart
@@ -163,6 +165,20 @@ Each role's provider instance and model come from `models` in `config.json` (see
 ## Remote computers
 
 To run lanes on another computer linked to T3 Code: install t3-lead there too (its hook injects the lane rules), add the computer under `remotes` on the lead's machine, and tell the lead which one to use. The lead uses a remote only when you name it or agree to it (for example when local resources run short, it asks first). It writes `where: <name>` in the verifier brief; the verifier creates the lane with that remote's `environmentId`, `projectId` and models, starts every message to it with the `t3-lead-ref` line, and allows extra time before the deadline alarm. Completion notifications come back as for local lanes. See `docs/agent-install.md` step 7.
+
+## Owner rules
+
+Three kinds of instructions are kept apart:
+
+| Kind | Example | Where |
+|---|---|---|
+| t3-lead behaviour, the same for everyone | restart a failed lane, verify completion claims | this repository (`rules/`, `skill/`) |
+| your rules for every computer | "push to main only after I approve" | your **private** repository, cloned at `owner_rules_dir`, file `rules.md` |
+| your rules for one computer | "never run work on computer X from here" | `state/owner-rules.md` on that computer |
+
+The hook appends both sets of owner rules to every verifier and lane prompt, and the lead reads them at start (`t3lead rule sync`, `t3lead rule list`). When you state a standing rule, the lead records it with `t3lead rule add [--shared]`; shared changes are committed and pushed to the private repository, and other computers pick them up on their next `t3lead rule sync`.
+
+To set up shared rules: create a private repository with a `rules.md` (one `- <rule>` per line), clone it on each computer, and set `owner_rules_dir` in `config.json`. Lanes on a remote computer get that computer's rules, so set it up there too.
 
 ## Known limitations
 

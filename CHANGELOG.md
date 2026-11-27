@@ -2,10 +2,11 @@
 
 `t3lead upgrade` moves to the newest tag listed here; `t3lead upgrade --edge` follows `main`.
 
-## Unreleased
+## v0.2.0 — 2026-11-27
 
-- Owner rules: `t3lead rule add|list|rm` keeps the user's standing rules in `state/owner-rules.md`; the hook appends them to every verifier and lane prompt, and the lead reads them at start.
-- Failed-run restarts: verifier rule 7 restarts a lane whose turn failed or stopped (same thread, then 3- and 10-minute alarms, then the next model); the lead does the same for a failed verifier. Remote-lane rule is now rule 8.
+- Owner rules: `t3lead rule add [--shared]|list|rm|sync`. Shared rules live in a private repository cloned at `owner_rules_dir` (committed and pushed on change); rules for one computer live in `state/owner-rules.md`. The hook appends both to every verifier and lane prompt; the lead syncs and reads them at start.
+- The lead skill no longer carries a user-specific reply language; that is an owner rule now.
+- Failed-run restarts: verifier rule 7 restarts a lane whose turn failed or stopped (same thread, then 3- and 10-minute alarms, then the next model); the lead does the same for a failed verifier. Tested: a lane killed mid-run reported `failed` within 2 s and finished after one restart. Remote-lane rule is now rule 8.
 
 ## v0.1.0 — 2026-11-27
 

@@ -63,6 +63,10 @@ Only when the user wants lanes to run on another computer linked to T3 (a linked
 3. Add an entry under `remotes` in `config.json` (see `config.example.json`): `environmentId`, `projectId`, optional `label`, and `models` when that computer's provider instance names differ from this machine's (find them with `orchestrator_capabilities` for that environment; a missing row is inherited from the local one).
 4. Check: `t3lead remotes` and `t3lead models` list it. No re-install is needed; the verifier rules pick it up on the next prompt.
 
+## 7b. Shared owner rules (optional)
+
+If the user keeps a private shared-rules repository (ask; for example `<their account>/t3-lead-owner`), clone it next to t3-lead (for example `<real home>/.t3-lead-owner`) with credentials that can push, set `"owner_rules_dir"` in `config.json` to that path, and check that `t3lead rule list` shows its rules under "shared". Do this on lane-only computers too: lanes get the rules of the computer they run on.
+
 ## 8. Hand over to the user
 
 **Lane-only computer.** If the user said this computer only runs lanes for a lead on another computer (for example "install it lane-only"), stop after step 6: do not open or register a lead thread here, and leave `models.lead` / `models.verifier` at whatever is in the config. Tell the user the values the lead's computer needs for its `remotes` entry: this computer's provider instance names for the lane rows (`t3lead models`). The `environmentId` and `projectId` are looked up from the lead's computer (step 7). Then list the files the installer changed and their backups.

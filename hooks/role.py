@@ -75,12 +75,11 @@ def write_role(tid, role, parent, extra=None):
 
 
 def owner_rules():
-    """Standing user rules kept by `t3lead rule add` in state/owner-rules.md (one per line)."""
-    try:
-        with open(os.path.join(ROOT, "state", "owner-rules.md")) as f:
-            return f.read().strip()
-    except OSError:
-        return ""
+    """Standing user rules: the shared set (owner_rules_dir/rules.md) and this computer's (state/owner-rules.md)."""
+    lines = []
+    for _label, _prefix, _path, rules in t3lead_config.owner_rule_sets(CFG):
+        lines += ["- " + r for r in rules]
+    return "\n".join(lines)
 
 
 def log(rec):
