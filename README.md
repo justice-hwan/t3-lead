@@ -28,6 +28,16 @@ Run t3lead init and work as the lead.
 
 From then on, give that thread your requests. For manual setup, see [Configuration](#configuration) and [Install](#install).
 
+## Upgrading
+
+Tell the lead thread (or any T3 thread on that machine):
+
+```text
+Run t3lead upgrade, show me the output, then re-read the t3-lead skill.
+```
+
+`t3lead upgrade` fast-forwards the checkout to the latest `origin/main` and re-runs `install.sh`. It refuses to run if tracked files have local changes. `t3lead upgrade --check` only lists the new commits, and `t3lead version` shows the installed commit. Verifier and lane rules take effect from the next prompt; hook or wrapper changes apply to sessions started after the upgrade.
+
 ## Layout
 
 ```
