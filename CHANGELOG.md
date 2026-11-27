@@ -2,8 +2,10 @@
 
 `t3lead upgrade` moves to the newest tag listed here; `t3lead upgrade --edge` follows `main`.
 
-## Unreleased
+## v0.3.0 — 2026-11-27
 
+- State backup: `state_remote` (a private git repository) and `t3lead backup [--init|--status]`; every ledger, lesson and local-rule change is committed and pushed in the background. `t3lead status` warns when the backup is behind.
+- Heavy queues: `heavy_max_load` holds the head of the queue while the computer is busy; waits longer than `heavy_wait_alert_min` are recorded in `state/heavy/events.jsonl` and listed by `t3lead status`.
 - Heavy-resource queues: `t3lead heavy --group G -- <command>` runs a command when a slot in group G (`heavy_groups` in config.json) is free, first come first served across all sessions on the computer; dead callers free their slot. Lane rule 7 (injected only when groups are configured) tells lanes to use it; `t3lead heavy status` shows holders and waiters.
 
 ## v0.2.0 — 2026-11-27

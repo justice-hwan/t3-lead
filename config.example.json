@@ -12,6 +12,10 @@
   "cli_link": "~/.local/bin/t3lead",
   "t3_settings": "~/.t3/userdata/settings.json",
   "owner_rules_dir": null,
+  "state_remote": null,
+  "heavy_groups": {},
+  "heavy_max_load": null,
+  "heavy_wait_alert_min": 10,
 
   "models": {
     "lead":     {"instance": "claudeAgent", "model": "claude-opus-5-5"},

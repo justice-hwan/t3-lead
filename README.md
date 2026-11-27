@@ -100,6 +100,9 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 | `skill_dirs` | `["~/.claude/skills"]` | skill folders; `t3-lead` is linked into each |
 | `cli_link` | `~/.local/bin/t3lead` | where the CLI symlink goes |
 | `heavy_groups` | none | heavy-resource queues on this computer, `{"gpu": 1, "cpu": 2}` (group name → slots); see Heavy resources |
+| `heavy_max_load` | none | also hold a heavy command while the 1-minute load average is above this percentage of the CPU count (e.g. `80`) |
+| `heavy_wait_alert_min` | `10` | a heavy wait longer than this is recorded in `state/heavy/events.jsonl` and shown by `t3lead status` |
+| `state_remote` | none | a **private** git repository that backs up `state/` (see State backup) |
 | `owner_rules_dir` | none | a clone of your private shared-rules repository (see Owner rules); unset means this computer's rules only |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3's settings, read only to check that every instance in `models` has its home covered |
 | `models` | see below | provider instance and model per role |
@@ -150,6 +153,7 @@ t3lead heavy --group G [--label L] [--max-wait S] -- <cmd ...>
                                             run cmd when a slot in heavy group G is free (FIFO; exit code passes through,
                                             75 if --max-wait ran out)
 t3lead heavy status                         holders and waiters per group
+t3lead backup [--init] [--status]           back up state/ to the private state_remote repository (also automatic)
 t3lead learn "<one-line lesson>" [--kind K] append a lesson (default kind: general)
 t3lead lessons [--kind K]                   list lessons (a kind also includes general)
 t3lead status                               short summary to read after a restart
@@ -174,6 +178,12 @@ To run lanes on another computer linked to T3 Code: install t3-lead there too (i
 ## Heavy resources
 
 Lanes run in parallel, but a GPU, a disk or a test server often fits one job at a time. Set `heavy_groups` in `config.json` (for example `{"gpu": 1, "test-server": 1, "cpu": 2}`) and lanes run such commands as `t3lead heavy --group gpu -- <command>`: the command starts when a slot is free, in arrival order across every session on the computer, and holds the slot until it exits. A caller that dies frees its slot at once (its process is gone) or within 60 s (stale heartbeat). With groups configured, the lane rules tell lanes how to use the queue; which work belongs to which group is up to you (put it in briefs or owner rules). The queue is per computer and does not look at real GPU load, so work started outside it is not seen.
+
+With `heavy_max_load` set, the command at the head of the queue also waits while the computer is busy. A wait longer than `heavy_wait_alert_min` is written to `state/heavy/events.jsonl` and listed by `t3lead status`, and the lane mentions it in its report; nothing wakes the lead the moment it happens.
+
+## State backup
+
+The ledger, lessons, this computer's owner rules and any notes under `state/` exist only on that computer. Set `state_remote` to a **private** repository (one per computer; the ledger holds whatever your requests mention) and run `t3lead backup --init`. From then on every `task add/move`, `learn` and `rule add/rm` commits and pushes in the background; `t3lead backup` does it by hand and `t3lead backup --status` shows the last backup. Runtime files (`roles/`, `hook.log`, `heavy/`) are not backed up. To restore on a new computer, clone the repository as `<home>/state` before `t3lead init`.
 
 ## Owner rules
 

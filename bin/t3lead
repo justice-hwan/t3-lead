@@ -16,6 +16,8 @@
                                           run a command when a slot in heavy group G is free (FIFO across all
                                           sessions on this computer); slots come from heavy_groups in config.json
   t3lead heavy status                     holders and waiters per group
+  t3lead backup [--init] [--status]       commit and push state/ (ledger, lessons, this computer's rules, notes) to the
+                                          private repository in state_remote; runs on its own after every ledger change
   t3lead learn "<one-line lesson>" [--kind K]
   t3lead lessons [--kind K]
   t3lead status                        ~20-line summary for the lead to read after a restart
@@ -56,6 +58,77 @@ def opt(args, name, default=None):
         if i + 1 >= len(args): die(f"missing value for {name}")
         v = args[i + 1]; del args[i:i + 2]; return v
     return default
+
+
+STATE_GITIGNORE = "roles/\nhook.log\nheavy/\n*.tmp\n.backup.lock\n"
+
+
+def sgit(*args, check=True):
+    r = subprocess.run(["git", "-C", STATE, *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise RuntimeError("git %s: %s" % (" ".join(args), (r.stderr or r.stdout).strip()))
+    return r.stdout.strip()
+
+
+def backup_ready():
+    return bool(CFG["state_remote"]) and os.path.isdir(os.path.join(STATE, ".git"))
+
+
+def backup_init():
+    remote = CFG["state_remote"]
+    if not remote: die("set state_remote in config.json to a private git repository URL first")
+    os.makedirs(STATE, exist_ok=True)
+    if not os.path.isdir(os.path.join(STATE, ".git")):
+        sgit("init", "-q", "-b", "main")
+    with open(os.path.join(STATE, ".gitignore"), "w") as f: f.write(STATE_GITIGNORE)
+    for k in ("user.name", "user.email"):  # same identity as the t3-lead checkout, if it has one
+        v = git("config", k, check=False)
+        if v and not sgit("config", "--local", k, check=False): sgit("config", "--local", k, v)
+    if sgit("remote", check=False): sgit("remote", "set-url", "origin", remote)
+    else: sgit("remote", "add", "origin", remote)
+    print("state backup set up: %s -> %s" % (STATE, remote))
+
+
+def backup_now(msg, quiet=False):
+    """Commit every tracked-able change under state/ and push. Serialised with a lock file."""
+    import fcntl
+    with open(os.path.join(STATE, ".backup.lock"), "a+") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        sgit("add", "-A")
+        if sgit("status", "--porcelain", check=False):
+            sgit("commit", "-q", "-m", msg)
+        has_up = sgit("rev-parse", "--abbrev-ref", "@{upstream}", check=False)
+        if has_up:
+            sgit("pull", "--rebase", "-q", check=False)
+            if sgit("rev-list", "--count", "@{upstream}..HEAD", check=False) not in ("", "0"):
+                sgit("push", "-q")
+        elif sgit("rev-parse", "-q", "--verify", "HEAD", check=False):
+            sgit("push", "-q", "-u", "origin", "main")
+    if not quiet: print("state backed up (%s)" % sgit("log", "-1", "--format=%h %ci"))
+
+
+def auto_backup(what):
+    """After a ledger/lesson/rule change: back up in a detached process so the CLI returns at once."""
+    if not backup_ready(): return
+    subprocess.Popen([sys.executable, os.path.realpath(__file__), "backup", "--quiet", "--message", "auto: " + what],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(os.path.join(STATE, "backup.err"), "a"),
+                     env={**os.environ, "T3_LEAD_HOME": ROOT}, start_new_session=True)
+
+
+def cmd_backup(a):
+    if "--init" in a: backup_init(); a = [x for x in a if x != "--init"]
+    if "--status" in a:
+        if not backup_ready(): print("state backup: not set up (state_remote in config.json, then `t3lead backup --init`)"); return
+        last = sgit("log", "-1", "--format=%h %ci", check=False) or "no commits yet"
+        dirty = len([l for l in sgit("status", "--porcelain", check=False).splitlines() if l])
+        ahead = sgit("rev-list", "--count", "@{upstream}..HEAD", check=False) or "?"
+        print("state backup: last %s; %d uncommitted change(s); %s unpushed commit(s) -> %s" % (last, dirty, ahead, CFG["state_remote"])); return
+    if not backup_ready(): die("state backup is not set up (state_remote in config.json, then `t3lead backup --init`)")
+    msg = opt(a, "--message", "backup " + now())
+    try:
+        backup_now(msg, quiet="--quiet" in a)
+    except RuntimeError as e:
+        die("backup failed: %s" % e)
 
 
 def save(t):
@@ -99,7 +172,7 @@ def cmd_task(a):
         t = {"id": "t-" + secrets.token_hex(2), "text": " ".join(a), "source": src, "state": "open",
              "created": now(), "verifier": None, "history": [[now(), "open", ""]]}
         if where: t["where"] = check_where(where)
-        save(t); print(t["id"])
+        save(t); print(t["id"]); auto_backup("task add " + t["id"])
     elif sub == "move":
         note = opt(a, "--note", ""); ver = opt(a, "--verifier"); where = opt(a, "--where")
         if len(a) != 2 or a[1] not in STATES: die(f"task move <id> <{'|'.join(STATES)}>")
@@ -109,7 +182,7 @@ def cmd_task(a):
             w = check_where(where)
             if w: t["where"] = w
             else: t.pop("where", None)
-        t["history"].append([now(), a[1], note]); save(t); print(f"{t['id']} -> {a[1]}")
+        t["history"].append([now(), a[1], note]); save(t); print(f"{t['id']} -> {a[1]}"); auto_backup("task %s -> %s" % (t["id"], a[1]))
     elif sub == "list":
         show_all = "--all" in a
         for t in all_tasks():
@@ -175,6 +248,7 @@ def cmd_rule(a):
         rs.append("%s (%s)" % (text, now()[:10])); write_rule_file(path, rs)
         if shared: shared_commit(path, "Add rule: " + text[:60])
         print("rule %s%d added (%s)" % (prefix, len(rs), label))
+        if prefix == "L": auto_backup("rule add")
     elif sub == "list":
         for label, prefix, path, rs in sets:
             print("%s  [%s]" % (label, path))
@@ -195,6 +269,7 @@ def cmd_rule(a):
         r = rs.pop(n - 1); write_rule_file(path, rs)
         if prefix == "S": shared_commit(path, "Remove rule: " + r[:60])
         print("removed (%s): %s" % (label, r))
+        if prefix == "L": auto_backup("rule rm")
     elif sub == "sync":
         if not CFG["owner_rules_dir"]: die("no owner_rules_dir in config.json; shared rules are not set up")
         shared_sync()
@@ -213,7 +288,8 @@ def cmd_heavy(a):
     if not group: die("give --group (configured: %s)" % (", ".join(sorted(groups)) or "none"))
     try: mw = float(mw) if mw is not None else None
     except ValueError: die("--max-wait takes seconds")
-    sys.exit(t3lead_heavy.run(STATE, groups, group, cmd, label=label, max_wait=mw))
+    sys.exit(t3lead_heavy.run(STATE, groups, group, cmd, label=label, max_wait=mw,
+                              max_load=CFG["heavy_max_load"], alert_min=CFG["heavy_wait_alert_min"]))
 
 
 def cmd_learn(a):
@@ -222,7 +298,7 @@ def cmd_learn(a):
     os.makedirs(STATE, exist_ok=True)
     with open(LESSONS, "a") as f:
         f.write(json.dumps({"at": now(), "kind": kind, "text": " ".join(a)}, ensure_ascii=False) + "\n")
-    print("recorded")
+    print("recorded"); auto_backup("lesson")
 
 
 def lessons(kind=None):
@@ -236,6 +312,11 @@ def cmd_status(_):
     opn = [t for t in ts if t["state"] in OPEN]
     first = [t for t in opn if t["state"] in ("waiting-owner", "delivered")]
     print(f"requests: {len(opn)} open / {len(ts)} total")
+    waits = t3lead_heavy.long_waits(STATE, CFG["heavy_groups"], CFG["heavy_wait_alert_min"]) if CFG["heavy_groups"] else []
+    if waits:
+        print("heavy queue: %d long wait(s) (`t3lead heavy status`):" % len(waits))
+        for g, e, m in waits:
+            print("  %s waiting %d min: %s" % (g, m, t3lead_heavy.describe(e)))
     if first:
         print("look at first:")
         for t in first:
@@ -245,6 +326,12 @@ def cmd_status(_):
         if t not in first:
             last = t["history"][-1]
             print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {at(t)}{t['text'][:45]}")
+    if CFG["state_remote"]:
+        if not backup_ready(): print("state backup: configured but not initialised (`t3lead backup --init`)")
+        else:
+            pend = sgit("rev-list", "--count", "@{upstream}..HEAD", check=False)
+            if pend not in ("", "0") or not sgit("rev-parse", "--abbrev-ref", "@{upstream}", check=False):
+                print("state backup: not pushed yet; run `t3lead backup` (see state/backup.err)")
     n_rules = sum(len(x[3]) for x in rule_sets())
     if n_rules:
         print(f"owner rules: {n_rules} (`t3lead rule list`)")
@@ -374,7 +461,7 @@ def cmd_upgrade(a):
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"): print(__doc__); return
-    {"task": cmd_task, "rule": cmd_rule, "heavy": cmd_heavy, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models, "remotes": cmd_remotes,
+    {"task": cmd_task, "rule": cmd_rule, "heavy": cmd_heavy, "backup": cmd_backup, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models, "remotes": cmd_remotes,
      "version": cmd_version, "upgrade": cmd_upgrade,
      "lessons": lambda r: [print(f"[{x['kind']}] {x['text']}") for x in lessons(opt(r, "--kind"))]
      }.get(a[0], lambda _: die(__doc__))(a[1:])

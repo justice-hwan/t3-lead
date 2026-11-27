@@ -67,6 +67,10 @@ Only when the user wants lanes to run on another computer linked to T3 (a linked
 
 If the user keeps a private shared-rules repository (ask; for example `<their account>/t3-lead-owner`), clone it next to t3-lead (for example `<real home>/.t3-lead-owner`) with credentials that can push, set `"owner_rules_dir"` in `config.json` to that path, and check that `t3lead rule list` shows its rules under "shared". Then run `t3lead rule sync` from a T3 thread: sessions there often have a different `$HOME`, so git may not find the user's credentials (SSH key or `gh` login). If sync fails for that reason, point that clone's git config at the existing credentials (for example a repo-local `credential.helper` or `core.sshCommand` using files under the real home); do not create new keys or tokens. Do this on lane-only computers too: lanes get the rules of the computer they run on.
 
+## 7c. State backup (optional, recommended on a lead's computer)
+
+Ask the user for a **private** repository for this computer's ledger (an empty one is fine). Set `"state_remote"` in `config.json` to its URL, run `t3lead backup --init`, then `t3lead backup --status`. A lane-only computer has no ledger and does not need one.
+
 ## 8. Hand over to the user
 
 **Lane-only computer.** If the user said this computer only runs lanes for a lead on another computer (for example "install it lane-only"), stop after step 6: do not open or register a lead thread here, and leave `models.lead` / `models.verifier` at whatever is in the config. Tell the user the values the lead's computer needs for its `remotes` entry: this computer's provider instance names for the lane rows (`t3lead models`). The `environmentId` and `projectId` are looked up from the lead's computer (step 7). Then list the files the installer changed and their backups.

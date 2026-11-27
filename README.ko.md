@@ -100,6 +100,9 @@ $EDITOR config.json
 | `skill_dirs` | `["~/.claude/skills"]` | 스킬 폴더들. 각각에 `t3-lead`를 링크 |
 | `cli_link` | `~/.local/bin/t3lead` | CLI 심볼릭 링크 위치 |
 | `heavy_groups` | 없음 | 이 컴퓨터의 무거운 자원 대기열, `{"gpu": 1, "cpu": 2}`(그룹 이름 → 자리 수). 무거운 자원 절 참고 |
+| `heavy_max_load` | 없음 | 1분 평균 부하가 CPU 수 대비 이 퍼센트를 넘으면 heavy 명령 시작을 미룸(예: `80`) |
+| `heavy_wait_alert_min` | `10` | heavy 대기가 이 시간(분)을 넘으면 `state/heavy/events.jsonl`에 기록하고 `t3lead status`에 표시 |
+| `state_remote` | 없음 | `state/`를 백업할 **비공개** git 저장소(상태 백업 절 참고) |
 | `owner_rules_dir` | 없음 | 비공개 공용 규칙 저장소를 clone한 경로(소유자 규칙 절 참고). 없으면 이 컴퓨터 규칙만 씀 |
 | `t3_settings` | `~/.t3/userdata/settings.json` | T3 설정 파일. `models`의 각 인스턴스가 쓰는 홈이 설정에 들어 있는지 확인할 때만 읽음 |
 | `models` | 아래 참고 | 역할별 provider 인스턴스와 모델 |
@@ -150,6 +153,7 @@ t3lead heavy --group G [--label L] [--max-wait S] -- <명령 ...>
                                             heavy 그룹 G에 빈 자리가 나면 명령 실행(도착 순서. 종료 코드는 그대로,
                                             --max-wait 초과 시 75)
 t3lead heavy status                         그룹별 실행 중·대기 중 목록
+t3lead backup [--init] [--status]           state/를 비공개 state_remote 저장소에 백업(자동으로도 실행)
 t3lead learn "<한 줄 교훈>" [--kind K]      교훈 추가 (기본 kind: general)
 t3lead lessons [--kind K]                   교훈 목록 (kind를 주면 general도 포함)
 t3lead status                               재시작 때 읽는 짧은 요약
@@ -174,6 +178,12 @@ T3 Code에 연결된 다른 컴퓨터에서 레인을 돌리려면, 그 컴퓨�
 ## 무거운 자원
 
 레인은 병렬로 돌지만 GPU, 디스크, 시험 서버는 한 번에 한 작업만 감당하는 경우가 많습니다. `config.json`에 `heavy_groups`(예: `{"gpu": 1, "test-server": 1, "cpu": 2}`)를 적으면 레인이 그런 명령을 `t3lead heavy --group gpu -- <명령>`으로 실행합니다. 자리가 나면 이 컴퓨터의 모든 세션을 통틀어 도착 순서대로 시작하고, 명령이 끝날 때까지 자리를 잡고 있습니다. 호출한 쪽이 죽으면 자리는 바로(프로세스가 없어짐) 또는 60초 안에(heartbeat 만료) 풀립니다. 그룹이 설정되면 레인 규칙에 사용법이 들어가고, 어떤 일이 어느 그룹인지는 사용자가 정합니다(브리프나 소유자 규칙에). 대기열은 컴퓨터별이고 실제 GPU 사용량은 보지 않으므로, 대기열 밖에서 시작한 작업은 알지 못합니다.
+
+`heavy_max_load`를 두면 대기열 맨 앞의 명령도 컴퓨터가 바쁜 동안 기다립니다. `heavy_wait_alert_min`보다 오래 기다리면 `state/heavy/events.jsonl`에 기록되고 `t3lead status`에 나오며, 레인도 보고에 적습니다. 그 순간 리드를 깨우지는 않습니다.
+
+## 상태 백업
+
+장부, 교훈, 이 컴퓨터 규칙, `state/` 아래 메모는 그 컴퓨터에만 있습니다. `state_remote`에 **비공개** 저장소(컴퓨터마다 하나. 장부에는 요청 내용이 그대로 들어갑니다)를 적고 `t3lead backup --init`을 실행하세요. 그다음부터는 `task add/move`, `learn`, `rule add/rm`마다 뒤에서 자동으로 commit·push합니다. `t3lead backup`은 직접 백업, `t3lead backup --status`는 마지막 백업을 보여 줍니다. 실행 중에만 쓰는 파일(`roles/`, `hook.log`, `heavy/`)은 백업하지 않습니다. 새 컴퓨터에서 복원하려면 `t3lead init` 전에 그 저장소를 `<home>/state`로 clone하세요.
 
 ## 소유자 규칙
 

@@ -18,7 +18,7 @@ The rules for verifier sessions and lanes are injected by the t3-lead `hooks/rol
 ## At start
 
 1. Once, register this thread as the lead with `t3lead init` (the CLI link the installer puts on PATH; inside T3, `$HOME` and `~` may point to a provider-specific home, so do not spell out `~/.t3-lead/...` paths). For children of an unregistered thread the hook injects nothing.
-2. After a restart or context compaction, read `t3lead status` before trusting memory. It shows the requests in progress and what to look at first.
+2. After a restart or context compaction, read `t3lead status` before trusting memory. If it says the state backup is not pushed, run `t3lead backup` and report a failure to the user. It shows the requests in progress and what to look at first.
 3. Run `t3lead rule sync` (pulls the shared rules, if set up), then read `t3lead rule list`: the user's standing rules. Follow them yourself; the hook also injects them into every verifier and lane, so do not copy them into briefs.
 
 ## Owner rules
@@ -48,7 +48,7 @@ Remove one only when the user says so (`t3lead rule rm S<n>|L<n>`). One-off inst
 
 ## Heavy resources
 
-If `t3lead heavy status` lists groups, lanes queue GPU, disk or test-server work through `t3lead heavy` (the hook tells them how). In a brief for such work, name the group the work belongs to when the owner rules do not already say it, and expect waits: allow for them in deadlines. When the user asks what is running on a shared resource, `t3lead heavy status` answers it.
+If `t3lead heavy status` lists groups, lanes queue GPU, disk or test-server work through `t3lead heavy` (the hook tells them how). In a brief for such work, name the group the work belongs to when the owner rules do not already say it, and expect waits: allow for them in deadlines. When the user asks what is running on a shared resource, `t3lead heavy status` answers it. `t3lead status` lists waits longer than `heavy_wait_alert_min`; when you see one, tell the user if it holds up their request.
 
 ## Remote computers
 

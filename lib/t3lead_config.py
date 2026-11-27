@@ -153,6 +153,13 @@ def load(use_file=True):
     if not isinstance(hg, dict) or not all(re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", k) and isinstance(v, int)
                                            and not isinstance(v, bool) and v >= 1 for k, v in hg.items()):
         raise ConfigError("heavy_groups must map group names (letters, digits, . _ -) to slot counts >= 1")
+    for k in ("heavy_max_load", "heavy_wait_alert_min"):
+        v = raw.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
+            raise ConfigError("%s must be a positive number" % k)
+    sr = raw.get("state_remote")
+    if sr is not None and not isinstance(sr, str):
+        raise ConfigError("state_remote must be a git URL string")
     wrapper = raw.get("claude_wrapper")
     codex_bin = raw.get("codex_bin")
     return {
@@ -167,6 +174,9 @@ def load(use_file=True):
         "codex_bin": p(codex_bin) if codex_bin else None,
         "skill_dirs": plist("skill_dirs", os.path.join(real_home, ".claude", "skills")),
         "cli_link": p(raw["cli_link"]) if raw.get("cli_link") else os.path.join(real_home, ".local", "bin", "t3lead"),
+        "state_remote": raw.get("state_remote") or None,
+        "heavy_max_load": raw.get("heavy_max_load"),
+        "heavy_wait_alert_min": raw.get("heavy_wait_alert_min", 10),
         "owner_rules_dir": p(raw["owner_rules_dir"]) if raw.get("owner_rules_dir") else None,
         "t3_settings": p(raw["t3_settings"]) if raw.get("t3_settings") else os.path.join(real_home, ".t3", "userdata", "settings.json"),
         "models": models,

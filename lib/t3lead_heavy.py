@@ -107,7 +107,23 @@ def describe(e):
     return "%s (%s, since %s)" % (e.get("label") or "?", who, time.strftime("%H:%M:%S", time.localtime(e["arrived"])))
 
 
-def run(state_dir, groups, group, cmd, label=None, max_wait=None, out=sys.stderr):
+def load_pct():
+    """1-minute load average as a percentage of the CPU count."""
+    try:
+        return os.getloadavg()[0] / (os.cpu_count() or 1) * 100
+    except OSError:
+        return 0.0
+
+
+def record_event(state_dir, rec):
+    try:
+        with open(os.path.join(state_dir, "heavy", "events.jsonl"), "a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def run(state_dir, groups, group, cmd, label=None, max_wait=None, out=sys.stderr, max_load=None, alert_min=None):
     if group not in groups:
         print("unknown heavy group %r; configured: %s (heavy_groups in config.json)" %
               (group, ", ".join(sorted(groups)) or "none"), file=out)
@@ -138,15 +154,27 @@ def run(state_dir, groups, group, cmd, label=None, max_wait=None, out=sys.stderr
         if signal.getsignal(s) != signal.SIG_IGN:  # keep nohup's ignored SIGHUP
             signal.signal(s, on_signal)
     try:
+        alerted = False
         while True:
             pos, holders = q.beat(eid)
-            if pos < q.slots:
+            load = load_pct() if (max_load and pos < q.slots) else 0.0
+            if pos < q.slots and not (max_load and load > max_load):
                 break
             now = time.time()
             if now - last_report >= REPORT_EVERY:
-                print("heavy[%s]: waiting, %d ahead; holding: %s" % (group, pos - q.slots + 1,
-                      "; ".join(describe(h) for h in holders)), file=out, flush=True)
+                if pos < q.slots:
+                    print("heavy[%s]: next in line, waiting for load %.0f%% <= %.0f%%" % (group, load, max_load),
+                          file=out, flush=True)
+                else:
+                    print("heavy[%s]: waiting, %d ahead; holding: %s" % (group, pos - q.slots + 1,
+                          "; ".join(describe(h) for h in holders)), file=out, flush=True)
                 last_report = now
+            if alert_min and not alerted and now - start >= alert_min * 60:
+                alerted = True
+                record_event(state_dir, {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": "long-wait", "group": group,
+                                         "label": label, "owner": owner, "waited_min": round((now - start) / 60, 1),
+                                         "reason": "load" if pos < q.slots else "slots",
+                                         "holders": [describe(h) for h in holders]})
             if max_wait is not None and now - start > max_wait:
                 print("heavy[%s]: gave up after %ds (--max-wait)" % (group, now - start), file=out, flush=True)
                 q.leave(eid)
@@ -167,6 +195,18 @@ def run(state_dir, groups, group, cmd, label=None, max_wait=None, out=sys.stderr
         return child.wait()
     finally:
         cleanup()
+
+
+def long_waits(state_dir, groups, alert_min):
+    """Entries currently waiting longer than alert_min minutes: [(group, entry, minutes)]."""
+    out, now = [], time.time()
+    for g in sorted(groups):
+        q = Queue(state_dir, g, groups[g])
+        for e in q.snapshot()[q.slots:]:
+            m = (now - e["arrived"]) / 60
+            if m >= alert_min:
+                out.append((g, e, m))
+    return out
 
 
 def status(state_dir, groups, out=sys.stdout):
