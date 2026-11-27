@@ -25,9 +25,11 @@
                                        one block per configured remote computer
   t3lead remotes                       remote computers (T3 linked environments) from config.json
   t3lead version                       installed version, the latest release, and newer commits on origin
-  t3lead upgrade [--check] [--edge]    move to the latest release tag (fast-forward only) and re-run install.sh;
+  t3lead upgrade [--check] [--edge] [--quiet]
+                                       move to the latest release tag (fast-forward only) and re-run install.sh;
                                        --edge follows the branch (main) instead of release tags;
-                                       --check only lists the new commits
+                                       --check only lists the new commits; --quiet prints only the install.sh
+                                       lines worth reading (warnings, changes)
 """
 import json, os, secrets, subprocess, sys, time
 
@@ -61,6 +63,20 @@ def opt(args, name, default=None):
 
 
 STATE_GITIGNORE = "roles/\nhook.log\nheavy/\n*.tmp\n.backup.lock\nbackup.err\n"
+
+
+CRED_HINT = ("  If this is an authentication error: git in a T3 session often has a different $HOME and cannot see your\n"
+             "  credentials. Point this repository at the existing ones, e.g. (gh login)\n"
+             "    git -C {d} config credential.https://github.com.helper '!GH_CONFIG_DIR=<real home>/.config/gh gh auth git-credential'\n"
+             "  or (SSH key) git -C {d} config core.sshCommand 'ssh -i <real home>/.ssh/<key>'. Do not create new keys or tokens.")
+
+
+def auth_hint(text, d):
+    t = text.lower()
+    if any(k in t for k in ("authentication", "could not read username", "permission denied", "terminal prompts disabled",
+                            "403", "could not read from remote")):
+        return "\n" + CRED_HINT.format(d=d)
+    return ""
 
 
 def sgit(*args, check=True):
@@ -107,6 +123,16 @@ def backup_now(msg, quiet=False):
     if not quiet: print("state backed up (%s)" % sgit("log", "-1", "--format=%h %ci"))
 
 
+def backup_running():
+    import fcntl
+    try:
+        with open(os.path.join(STATE, ".backup.lock"), "a+") as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(lf, fcntl.LOCK_UN)
+        return False
+    except OSError:
+        return True
+
+
 def auto_backup(what):
     """After a ledger/lesson/rule change: back up in a detached process so the CLI returns at once."""
     if not backup_ready(): return
@@ -122,13 +148,15 @@ def cmd_backup(a):
         last = sgit("log", "-1", "--format=%h %ci", check=False) or "no commits yet"
         dirty = len([l for l in sgit("status", "--porcelain", check=False).splitlines() if l])
         ahead = sgit("rev-list", "--count", "@{upstream}..HEAD", check=False) or "?"
-        print("state backup: last %s; %d uncommitted change(s); %s unpushed commit(s) -> %s" % (last, dirty, ahead, CFG["state_remote"])); return
+        busy = backup_running()
+        print("state backup: last %s; %d uncommitted change(s); %s unpushed commit(s)%s -> %s" % (
+            last, dirty, ahead, " (a background backup is running now)" if busy else "", CFG["state_remote"])); return
     if not backup_ready(): die("state backup is not set up (state_remote in config.json, then `t3lead backup --init`)")
     msg = opt(a, "--message", "backup " + now())
     try:
         backup_now(msg, quiet="--quiet" in a)
     except RuntimeError as e:
-        die("backup failed: %s" % e)
+        die("backup failed: %s%s" % (e, auth_hint(str(e), STATE)))
 
 
 def save(t):
@@ -220,7 +248,8 @@ def shared_sync(quiet=False):
         if not quiet: print("shared rules synced (%s)" % shared_git("log", "-1", "--format=%h %cs"))
         return True
     except RuntimeError as e:
-        print("warning: shared rules not synced: %s\n  the change is kept locally; run `t3lead rule sync` later" % e, file=sys.stderr)
+        print("warning: shared rules not synced: %s\n  the change is kept locally; run `t3lead rule sync` later%s"
+              % (e, auth_hint(str(e), CFG["owner_rules_dir"])), file=sys.stderr)
         return False
 
 
@@ -330,7 +359,7 @@ def cmd_status(_):
         if not backup_ready(): print("state backup: configured but not initialised (`t3lead backup --init`)")
         else:
             pend = sgit("rev-list", "--count", "@{upstream}..HEAD", check=False)
-            if pend not in ("", "0") or not sgit("rev-parse", "--abbrev-ref", "@{upstream}", check=False):
+            if (pend not in ("", "0") or not sgit("rev-parse", "--abbrev-ref", "@{upstream}", check=False)) and not backup_running():
                 print("state backup: not pushed yet; run `t3lead backup` (see state/backup.err)")
     n_rules = sum(len(x[3]) for x in rule_sets())
     if n_rules:
@@ -452,7 +481,15 @@ def cmd_upgrade(a):
     if r.returncode != 0:
         die("cannot fast-forward to %s (local commits?): %s" % (label, (r.stderr or r.stdout).strip()))
     print("updated %s -> %s (%s); re-running install.sh" % (old, git("rev-parse", "--short", "HEAD"), label), flush=True)
-    r = subprocess.run(["bash", os.path.join(t3lead_config.CODE_DIR, "install.sh")], env={**os.environ, "T3_LEAD_HOME": ROOT})
+    quiet = "--quiet" in a
+    r = subprocess.run(["bash", os.path.join(t3lead_config.CODE_DIR, "install.sh")], env={**os.environ, "T3_LEAD_HOME": ROOT},
+                       capture_output=quiet, text=True)
+    if quiet:
+        lines = (r.stdout + r.stderr).splitlines()
+        keep = [l for l in lines if any(k in l for k in ("WARNING", "SKIPPED", "differs", "failed", "error", "not found",
+                                                             " added", " patched", " linked:", " registered", " set ")) and "already" not in l]
+        print("install.sh: %d line(s) of output, %d worth reading:" % (len(lines), len(keep)))
+        for l in keep: print("  " + l.strip())
     if r.returncode != 0: die("install.sh failed (exit %d); the code is updated, fix the error and re-run install.sh" % r.returncode)
     print("done. Verifier/lane rules apply from the next prompt. Lead: re-read the t3-lead skill now; "
           "hook or wrapper changes apply to sessions started after this.")

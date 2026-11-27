@@ -14,6 +14,7 @@ Completion conditions (things you can check directly):
 - <e.g. file X contains Y>
 Scope: <repositories/folders you may touch>, must not touch: <...>
 Splitting into lanes: <independent tasks that can be split / tasks that need an order>, lanes that edit the same repository get isolation:"worktree"
+Accounts: <logged-in accounts, pages or conversations this request may write to; "none" if it only reads>   (other requests stay off them until this one is delivered)
 where: <remote name from `t3lead remotes`; omit for this computer>   (only when the user named that computer or agreed to it; say where on that computer the work happens)
 Notes: <related files, earlier lessons (t3lead lessons), user preferences>
 Report: once, after verifying every lane. Conclusion, evidence (files, commands, PRs, commits), what remains or needs a user decision.

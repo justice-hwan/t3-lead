@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Lead skill: how to add conditions to a request already in progress (`t3_thread_send` with `mode:"auto"`; a waiting verifier rejects `steer`); logged-in accounts count as shared resources between requests (new `Accounts:` brief field); examples of what the lead may do itself.
+- Lane rule 7: check and capture public pages in a private (incognito) browser profile; the logged-in default profile only for named logged-in work. Heavy resources is now lane rule 8.
+- `t3lead rule sync` and `t3lead backup` print how to point git at existing credentials when a T3 session cannot see them.
+- `t3lead backup --status` and `t3lead status` say when a background backup is still running instead of reporting it as unpushed.
+- `t3lead upgrade --quiet` prints only the install.sh lines worth reading.
 - Backup: `backup.err` is no longer committed to the state repository.
 
 ## v0.3.0 — 2026-11-27
