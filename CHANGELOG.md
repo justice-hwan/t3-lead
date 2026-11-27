@@ -2,6 +2,10 @@
 
 `t3lead upgrade` moves to the newest tag listed here; `t3lead upgrade --edge` follows `main`.
 
+## Unreleased
+
+- Backup: `backup.err` is no longer committed to the state repository.
+
 ## v0.3.0 — 2026-11-27
 
 - State backup: `state_remote` (a private git repository) and `t3lead backup [--init|--status]`; every ledger, lesson and local-rule change is committed and pushed in the background. `t3lead status` warns when the backup is behind.
