@@ -16,3 +16,4 @@ Run `t3lead models` to print them; use that output, not remembered names. The ro
 - Putting the lane rules in the brief increases refusals (5/16 → 11/16); injecting them with the hook eliminates them (Claude harness 0/8, Codex harness 0/8).
 - If a Codex-harness session is used as the verifier session, it creates lanes one at a time at 6–9 second intervals, so they do not run in parallel.
 - Effort: start from the lowest. Reading, research, and small edits use low; operational changes use medium; new features use high. Never use max.
+- Remote computers (`remotes` in `config.json`) carry their own copies of the lane rows. A row a remote does not set is inherited from the local one, which is only right when the instance names match; `t3lead models` marks inherited rows "(same as local)".

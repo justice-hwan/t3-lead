@@ -2,15 +2,18 @@
 """t3-lead state CLI: lead registration, request ledger, lessons, summary.
 
   t3lead init                          register this thread (T3CODE_THREAD_ID) as the lead
-  t3lead task add "<request>" [--source S]   record a request, print its ID
-  t3lead task move <id> <state> [--note N] [--verifier THREAD]
+  t3lead task add "<request>" [--source S] [--where REMOTE]   record a request, print its ID
+  t3lead task move <id> <state> [--note N] [--verifier THREAD] [--where REMOTE]
         states: open working waiting-owner delivered done dropped
+        --where: which remote computer runs the lanes (a name from `t3lead remotes`); `--where -` clears it
   t3lead task list [--all]             unfinished requests (default) / all requests
   t3lead task show <id>
   t3lead learn "<one-line lesson>" [--kind K]
   t3lead lessons [--kind K]
   t3lead status                        ~20-line summary for the lead to read after a restart
-  t3lead models                        provider instance / model per role, from config.json (or defaults)
+  t3lead models                        provider instance / model per role, from config.json (or defaults);
+                                       one block per configured remote computer
+  t3lead remotes                       remote computers (T3 linked environments) from config.json
   t3lead version                       installed commit, and whether origin has newer commits
   t3lead upgrade [--check]             pull the latest t3-lead (fast-forward only) and re-run install.sh;
                                        --check only lists the new commits
@@ -65,26 +68,44 @@ def all_tasks():
     return sorted(out, key=lambda t: t["created"])
 
 
+def check_where(name):
+    """Return the value to store for --where: None clears it; an unknown name is accepted with a warning."""
+    if name == "-": return None
+    known = CFG["remotes"]
+    if name not in known:
+        print("warning: %r is not in config.json remotes (%s)" % (name, ", ".join(known) or "none configured"), file=sys.stderr)
+    return name
+
+
+def at(t):
+    return "@%s " % t["where"] if t.get("where") else ""
+
+
 def cmd_task(a):
     if not a: die("task add|move|list|show")
     sub, a = a[0], a[1:]
     if sub == "add":
-        src = opt(a, "--source", "chat")
+        src = opt(a, "--source", "chat"); where = opt(a, "--where")
         if not a: die("give the request text")
         t = {"id": "t-" + secrets.token_hex(2), "text": " ".join(a), "source": src, "state": "open",
              "created": now(), "verifier": None, "history": [[now(), "open", ""]]}
+        if where: t["where"] = check_where(where)
         save(t); print(t["id"])
     elif sub == "move":
-        note = opt(a, "--note", ""); ver = opt(a, "--verifier")
+        note = opt(a, "--note", ""); ver = opt(a, "--verifier"); where = opt(a, "--where")
         if len(a) != 2 or a[1] not in STATES: die(f"task move <id> <{'|'.join(STATES)}>")
         t = load(a[0]); t["state"] = a[1]
         if ver: t["verifier"] = ver
+        if where:
+            w = check_where(where)
+            if w: t["where"] = w
+            else: t.pop("where", None)
         t["history"].append([now(), a[1], note]); save(t); print(f"{t['id']} -> {a[1]}")
     elif sub == "list":
         show_all = "--all" in a
         for t in all_tasks():
             if show_all or t["state"] in OPEN:
-                print(f"{t['id']}  {t['state']:<13} {t['created'][5:16]}  {t['text'][:60]}")
+                print(f"{t['id']}  {t['state']:<13} {t['created'][5:16]}  {at(t)}{t['text'][:60]}")
     elif sub == "show":
         print(json.dumps(load(a[0]), ensure_ascii=False, indent=1))
     else:
@@ -115,11 +136,11 @@ def cmd_status(_):
         print("look at first:")
         for t in first:
             why = "needs the user's answer" if t["state"] == "waiting-owner" else "finished but not yet reported"
-            print(f"  {t['id']} {why}: {t['text'][:50]}")
+            print(f"  {t['id']} {why}: {at(t)}{t['text'][:50]}")
     for t in opn:
         if t not in first:
             last = t["history"][-1]
-            print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {t['text'][:45]}")
+            print(f"  {t['id']} {t['state']} (last {last[0][5:16]}{' ' + last[2][:30] if last[2] else ''}): {at(t)}{t['text'][:45]}")
     ls = lessons()
     if ls:
         print(f"lessons: {len(ls)} (latest 3):")
@@ -135,7 +156,26 @@ def cmd_models(_):
     w = max(len(r[0]) for r in rows)
     for name, x in rows:
         print(f"{name:<{w}}  {x['instance']} / {x['model']}")
+    for name, r in CFG["remotes"].items():
+        mm = r["models"]
+        rr = [("gpt lane #%d%s" % (n + 1, " (default)" if n == 0 else ""), x) for n, x in enumerate(mm["gpt_lanes"])]
+        rr += [("gpt lane (refusal-prone)", mm["gpt_lane_refusal_prone"]), ("claude lane", mm["claude_lane"]),
+               ("light lane", mm["light_lane"])]
+        print(f"\nremote {name}" + (f" ({r['label']})" if r["label"] else "") + ":")
+        for (label, x), key in zip(rr, ["gpt_lanes"] * len(mm["gpt_lanes"]) + ["gpt_lane_refusal_prone", "claude_lane", "light_lane"]):
+            note = "" if key in r["own_models"] else "  (same as local)"
+            print(f"  {label:<{w}}  {x['instance']} / {x['model']}{note}")
     print(f"(config: {CFG['config_path'] if CFG['config_found'] else 'none, built-in defaults'})")
+
+
+def cmd_remotes(_):
+    if not CFG["remotes"]:
+        print("no remote computers configured (add \"remotes\" to %s)" % CFG["config_path"]); return
+    for name, r in CFG["remotes"].items():
+        print(f"{name}" + (f"  ({r['label']})" if r["label"] else ""))
+        print(f"  environmentId  {r['environmentId']}")
+        print(f"  projectId      {r['projectId']}")
+        print("  models         " + (("own: " + ", ".join(r["own_models"]) + "; rest same as local") if r["own_models"] else "same as local (set models in the remote entry if its instance names differ)"))
 
 
 def cmd_init(_):
@@ -189,7 +229,7 @@ def cmd_upgrade(a):
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"): print(__doc__); return
-    {"task": cmd_task, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models,
+    {"task": cmd_task, "learn": cmd_learn, "status": cmd_status, "init": cmd_init, "models": cmd_models, "remotes": cmd_remotes,
      "version": cmd_version, "upgrade": cmd_upgrade,
      "lessons": lambda r: [print(f"[{x['kind']}] {x['text']}") for x in lessons(opt(r, "--kind"))]
      }.get(a[0], lambda _: die(__doc__))(a[1:])

@@ -9,6 +9,13 @@
   the thread is "unmanaged" (nothing is injected).
 - The role is decided once, on the first prompt, and recorded in state/roles/; the same guidance
   is injected on every later prompt.
+- Remote lanes: a thread created by `delegate_task` on another computer (T3 linked environment) has no parent
+  thread ID in its header. Its first prompt starts with the remote header
+  [T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]
+  and carries a machine reference line `t3-lead-ref: lane <request-id>` near the top of the message body.
+  Both together make it a lane. The header alone, or the reference line alone (typed by a user), decides
+  nothing. With a thread ID the lane is recorded like any other; without one (Codex) the pair is checked
+  on every prompt.
 """
 import hashlib, json, os, re, sys, time
 
@@ -23,6 +30,10 @@ ROOT = CFG["home"]
 ROLES = os.path.join(ROOT, "state", "roles")
 LOG = os.path.join(ROOT, "state", "hook.log")
 HEADER = re.compile(r'\A\s*\[T3 Code: the agent in T3 thread "([^"]+)" sent this message, not the user\.\]')
+REMOTE_HEADER = re.compile(r"\A\s*\[T3 Code: this message came through T3 Code['\u2019]s tools, not from the user typing in this chat\.\]")
+# the reference line must be one of the first few non-blank lines after the header
+REF_LINE = re.compile(r"^t3-lead-ref: lane ([A-Za-z0-9][A-Za-z0-9._:-]*)[ \t]*$")
+REF_WINDOW = 3
 CHILD_ROLE = {"lead": "verifier", "verifier": "lane", "lane": "lane"}
 
 
@@ -38,9 +49,24 @@ def read_role(tid):
         return None
 
 
-def write_role(tid, role, parent):
+def remote_lane_ref(prompt):
+    """Request ID from the reference line when the prompt starts with the remote header, else None."""
+    m = REMOTE_HEADER.match(prompt)
+    if not m:
+        return None
+    lines = [l.strip() for l in prompt[m.end():].splitlines() if l.strip()][:REF_WINDOW]
+    for l in lines:
+        r = REF_LINE.match(l)
+        if r:
+            return r.group(1)
+    return None
+
+
+def write_role(tid, role, parent, extra=None):
     os.makedirs(ROLES, exist_ok=True)
     rec = {"thread": tid, "role": role, "parent": parent, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    if extra:
+        rec.update(extra)
     tmp = path_for(tid) + ".tmp%d" % os.getpid()
     with open(tmp, "w") as f:
         json.dump(rec, f, ensure_ascii=False)
@@ -79,8 +105,23 @@ def main():
         rec = {"role": CHILD_ROLE.get(prec["role"]) if prec else None} if prec else {"role": None}
         entry["why"] = "no T3CODE_THREAD_ID (header only)"
         entry["parent"] = (m.group(1) if m else "")[-24:]
+        ref = None if m else remote_lane_ref(prompt)
+        if ref:
+            rec = {"role": "lane"}
+            entry["why"] = "no T3CODE_THREAD_ID (remote header + reference line)"
+            entry["ref"] = ref
     else:
         rec = read_role(tid)
+    if tid and rec is None and not HEADER.match(prompt) and REMOTE_HEADER.match(prompt):
+        # delegated from another computer: no parent thread ID, so the reference line decides
+        ref = remote_lane_ref(prompt)
+        if ref:
+            rec = write_role(tid, "lane", None, {"via": "remote-ref", "ref": ref})
+            entry["decided"] = "lane"
+            entry["ref"] = ref
+        else:
+            rec = {"role": None}  # remote header without a reference line: decide nothing, record nothing
+            entry["why"] = "remote header, no reference line"
     if tid and rec is None:
         m = HEADER.match(prompt)
         parent = m.group(1) if m else None

@@ -34,6 +34,15 @@ The rules for verifier sessions and lanes are injected by the t3-lead `hooks/rol
    - **Set a backup alarm for the verifier session.** Right after delegating, `schedule_task` with `{type:"once", runAt:<now + expected duration + margin>}` (60 minutes when there is no estimate), `bindToCurrentThread: true`, and a prompt naming the request ID and the verifier thread. This catches a verifier session that stalls or a completion notification that never arrives (T3 does not resend lost notifications). When the alarm wakes you, run `t3lead task show <id>`: if the request is already delivered or done, do nothing; otherwise check the verifier once with `task_status` and either send it one nudge on the same thread, set one more alarm, or move the request to `waiting-owner` and tell the user. When the verifier's report arrives first, delete the alarm with `delete_scheduled_task`. Record the alarm ID in the ledger note.
 4. **End the turn.** Do not wait or poll. The completion notification wakes this thread. If the user asks in the meantime, answer only "in progress". Do not guess at results.
 
+## Remote computers
+
+`t3lead remotes` lists the other computers (T3 linked environments) that lanes can run on, and `t3lead models` shows their instance and model rows. If it prints none, there is nothing to use.
+
+- **When to use one:** when the user names that computer ("run it on the MacBook"), or when local resources run short (the machine is busy or lacks something the task needs). In the second case ask the user first, with numbered options and your recommendation. Never send work to another computer on your own.
+- **How:** put a `where: <remote name>` line in the verifier brief (see `references/briefs.md`) and record it with `t3lead task add ... --where <name>` / `task move <id> ... --where <name>`. The verifier creates the lanes on that computer with its `environmentId`, `projectId` and models, and puts a `t3-lead-ref: lane <request-id>` line at the top of every message it sends them. Do not write that line or any rules into a lane brief yourself.
+- **Prerequisite:** t3-lead must also be installed on that computer (`docs/agent-install.md`, run there). Its hook is what injects the lane rules; without it the lane gets none and may refuse.
+- Remote lanes are slower and cannot share a checkout with local ones, so give them work that stands alone, and name in the brief where on that computer the work happens.
+
 ## When the verifier session finishes
 
 1. Do not take the report at face value. The lead checks the evidence in the report (files, command results, PRs, commits) once itself. Checking one or two of the important ones is enough.
@@ -59,6 +68,7 @@ Run `t3lead models`: it prints the provider instance and model for each role on 
 
 ## What not to do
 
+- Do not send work to a remote computer unless the user named it or agreed to it.
 - The lead does not do a lane's work itself.
 - Do not poll verifier sessions or lanes repeatedly (`task_status`, `t3_thread_read`, sleep, and Monitor are forbidden).
 - Do not write sentences like "this message is legitimate" or "you are a lane" in a brief. They actually raise the refusal rate.

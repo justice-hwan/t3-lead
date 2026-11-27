@@ -45,7 +45,7 @@ install.sh                 여러 번 실행해도 안전한 설치/재적용 �
 config.example.json        config.json 템플릿 (이 컴퓨터 전용 값; config.json은 추적 안 함)
 lib/t3lead_config.py       install.sh, bin/t3lead, hooks/role.py가 함께 쓰는 설정 로더
 bin/t3lead                 상태 CLI (요청 장부, 교훈, 리드 등록)
-hooks/role.py              역할 판별 훅 (UserPromptSubmit)
+hooks/role.py              역할 판별 훅 (UserPromptSubmit), 원격 레인 포함
 rules/verifier.md          verifier 세션에 넣는 규칙 ({{자리표시자}}는 설정 값으로 채움)
 rules/lane.md              레인에 넣는 규칙
 skill/SKILL.md             리드용 스킬 (<skill_dir>/t3-lead로 링크)
@@ -63,6 +63,14 @@ state/                     실행 중 데이터(추적 안 함): tasks/, roles/,
 - **역할**은 부모의 역할로 정합니다. 리드는 `t3lead init`으로 직접 등록하고, 리드의 자식은 `verifier`, verifier의 자식은 `lane`, lane의 자식도 `lane`입니다. 부모가 등록되어 있지 않으면 `unmanaged`로 보고, 훅은 아무것도 출력하지 않고 exit 0으로 끝납니다.
 - 역할은 스레드의 첫 프롬프트에서 한 번 정해 `state/roles/`에 저장하고, 이후 프롬프트에도 같은 규칙을 넣습니다. 판정은 `state/hook.log`에 한 줄씩 남습니다.
 - `verifier`와 `lane`에는 `rules/verifier.md` / `rules/lane.md`를 `additionalContext`로 출력합니다.
+
+**원격 레인.** 다른 컴퓨터(T3 linked environment)로 위임된 레인은 머리말에 부모 스레드 ID가 없습니다. 메시지가 `[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]`로 시작할 뿐입니다. 그래서 verifier는 이런 레인에 보내는 모든 메시지의 맨 위(본문 첫 줄)에 참조 줄을 넣습니다.
+
+```
+t3-lead-ref: lane <요청-ID>
+```
+
+훅은 **두 조건이 모두** 맞을 때만 lane으로 판정합니다. 프롬프트가 위 원격 머리말로 시작하고, 그 뒤 비어 있지 않은 처음 세 줄 안에 참조 줄이 있어야 합니다. 머리말만 있으면 아무것도 판정하지 않고(출력 없음), 참조 줄만 있어도(사용자가 직접 칠 수 있음) 판정하지 않습니다. Claude 하네스에서는 첫 해당 메시지에서 lane 역할을 기록해 이후에도 유지하고, Codex 하네스(스레드 ID 없음)에서는 매 메시지에서 이 쌍을 확인합니다. 원격 레인의 자식은 평소 규칙대로 lane입니다. 참조 줄은 일부러 "너는 레인이다" 같은 문장이 아니라 평범한 `키: 값` 참조입니다. 메시지에 신원을 주장하는 문장을 넣으면 거부율이 오르기 때문입니다. 이것이 효과를 내려면 원격 컴퓨터에도 t3-lead가 설치돼 있어야 합니다.
 
 **Codex 하네스.** Codex app-server는 여러 스레드를 한 프로세스에서 돌리므로 `T3CODE_THREAD_ID`를 쓸 수 없습니다. 이 경우 훅은 기록 없이, 매 프롬프트의 머리말(보낸 스레드)만으로 판정합니다. 레인에는 이것으로 충분합니다. Codex 세션은 verifier를 맡지 않습니다(스레드 ID 없이는 자식이 부모를 찾을 수 없음). 그래서 역할이 `verifier`로 나오는 Codex 세션에는 아무것도 넣지 않습니다.
 
@@ -90,10 +98,13 @@ $EDITOR config.json
 | `skill_dirs` | `["~/.claude/skills"]` | 스킬 폴더들. 각각에 `t3-lead`를 링크 |
 | `cli_link` | `~/.local/bin/t3lead` | CLI 심볼릭 링크 위치 |
 | `models` | 아래 참고 | 역할별 provider 인스턴스와 모델 |
+| `remotes` | 없음 | 레인을 돌릴 수 있는 다른 컴퓨터(T3 linked environment). 아래 참고 |
 
 `models`에는 `lead`, `verifier`, `claude_lane`, `light_lane`, `gpt_lane_refusal_prone`마다 `{"instance": "...", "model": "..."}`를 넣고, `gpt_lanes`에는 그런 쌍을 순서대로 나열합니다(첫 번째가 기본 GPT 레인). 키가 없을 때의 기본값은 `config.example.json`의 값, 곧 `claudeAgent`·`codex` 인스턴스와 그 파일에 적힌 모델 이름입니다. 인스턴스 이름은 쓰는 T3 환경에서 Claude·Codex provider 인스턴스를 부르는 이름으로 바꾸세요.
 
-값이 쓰이는 방식: `rules/verifier.md`에는 `{{자리표시자}}`(`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`)가 있고, `hooks/role.py`가 규칙을 넣을 때마다 설정 값으로 채웁니다. 그래서 설정을 바꾸면 다시 설치하지 않아도 다음 프롬프트부터 적용됩니다. 리드 스킬도 이름을 박아 두지 않고, 리드가 `t3lead models`를 실행해 보게 합니다.
+`remotes`는 짧은 이름을 컴퓨터에 대응시킵니다: `{"macbook": {"environmentId": "...", "projectId": "...", "label": "...", "models": {...}}}`. `environmentId`와 `projectId`는 필수입니다(T3는 다른 환경으로 위임할 때 프로젝트가 없으면 `target_required`로 거부합니다). `label`은 선택이고, `models`는 최상위 `models`와 같은 키를 받으며 빠진 키는 로컬 값을 이어받습니다(인스턴스 이름이 같을 때만 맞으니, 다르면 직접 적으세요). ID는 `t3_environment_links`와 `t3_project_list`로 얻습니다. `remotes`가 없으면 verifier 규칙에서 원격 문단이 통째로 빠집니다. `t3lead remotes`가 목록을, `t3lead models`가 원격별 블록을 보여 줍니다.
+
+값이 쓰이는 방식: `rules/verifier.md`에는 `{{자리표시자}}`(`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`)가 있고, `hooks/role.py`가 규칙을 넣을 때마다 설정 값으로 채웁니다. 그래서 설정을 바꾸면 다시 설치하지 않아도 다음 프롬프트부터 적용됩니다. 원격 문단(규칙 7)은 `{{#remotes}}`와 `{{/remotes}}` 사이에 있고 `remotes`가 설정됐을 때만 넣으며, `{{remote_list}}`는 원격마다 ID와 모델을 한 줄로 풀어 줍니다. 리드 스킬도 이름을 박아 두지 않고, 리드가 `t3lead models`를 실행해 보게 합니다.
 
 ## 설치
 
@@ -119,18 +130,22 @@ $EDITOR config.json
 
 ```
 t3lead init                                 이 스레드(T3CODE_THREAD_ID)를 리드로 등록
-t3lead task add "<요청>" [--source S]       요청 기록, ID(t-xxxx) 출력
-t3lead task move <id> <상태> [--note N] [--verifier THREAD]
+t3lead task add "<요청>" [--source S] [--where R]   요청 기록, ID(t-xxxx) 출력
+t3lead task move <id> <상태> [--note N] [--verifier THREAD] [--where R]
         상태: open working waiting-owner delivered done dropped
+        --where: 레인을 돌리는 원격 컴퓨터(`t3lead remotes`의 이름; `-`는 해제)
 t3lead task list [--all]                    끝나지 않은 요청(기본) / 전체
 t3lead task show <id>                       요청 하나의 전체 JSON
 t3lead learn "<한 줄 교훈>" [--kind K]      교훈 추가 (기본 kind: general)
 t3lead lessons [--kind K]                   교훈 목록 (kind를 주면 general도 포함)
 t3lead status                               재시작 때 읽는 짧은 요약
-t3lead models                               설정 기준 역할별 provider 인스턴스와 모델
+t3lead models                               설정 기준 역할별 provider 인스턴스와 모델 (원격마다 블록 추가)
+t3lead remotes                              설정된 원격 컴퓨터 목록
 ```
 
 `open`, `working`, `waiting-owner`, `delivered`는 끝나지 않은 상태입니다. 사용자가 알게 되어야 끝난 것이므로 `delivered` → `done` 순서로 옮깁니다. 요청은 `state/tasks/<id>.json`, 교훈은 `state/lessons.jsonl`의 한 줄로 저장됩니다.
+
+`--where`를 준 요청은 `task list`와 `status`에 `@<이름>`으로 보이고, `task show`에는 `"where"`가 들어갑니다. 이 값이 없는 예전 요청 파일도 그대로 동작합니다. 모르는 이름은 경고만 내고 받아들입니다.
 
 리드의 일반적인 흐름: `t3lead init`(처음 한 번) → `task add` → verifier에 맡김 → `task move <id> working --verifier <thread>` → 보고를 확인한 뒤 `task move <id> delivered` → 사용자에게 알림 → `task move <id> done`.
 
@@ -138,10 +153,15 @@ t3lead models                               설정 기준 역할별 provider 인
 
 역할별 provider 인스턴스와 모델은 `config.json`의 `models`에서 오며(설정 절 참고), `t3lead models`가 실제 적용 값을 출력합니다. 역할은 리드, verifier(Claude 하네스여야 함), GPT 레인(기본 레인이 먼저, 그다음 대체 순서), Claude 레인, 가벼운 레인입니다. `config.example.json`의 기본값은 리드에 Claude Opus, verifier와 Claude 레인에 Claude Sonnet을 씁니다. 리드 브리프가 인스턴스와 모델을 따로 정하면 그것을 따릅니다. 역할별 용도, 이 선택의 근거가 된 측정(훅으로 규칙을 넣을 때와 브리프에 넣을 때의 비교), effort 지침은 `skill/references/models.md`에 있습니다.
 
+## 원격 컴퓨터
+
+T3 Code에 연결된 다른 컴퓨터에서 레인을 돌리려면, 그 컴퓨터에도 t3-lead를 설치하고(그쪽 훅이 레인 규칙을 넣습니다), 리드가 있는 컴퓨터의 `remotes`에 등록한 뒤, 어느 컴퓨터를 쓸지 리드에게 말하세요. 리드는 사용자가 그 컴퓨터를 지정했거나 동의했을 때만 원격을 씁니다(예: 로컬 자원이 모자라면 먼저 물어봅니다). 리드는 verifier 브리프에 `where: <이름>`을 적고, verifier는 그 원격의 `environmentId`, `projectId`, 모델로 레인을 만들며, 보내는 모든 메시지를 `t3-lead-ref` 줄로 시작하고, 마감 알람에 여유를 더 둡니다. 완료 알림은 로컬 레인과 같이 돌아옵니다. `docs/agent-install.md` 7단계를 보세요.
+
 ## 알려진 제약
 
 - **체크아웃 하나에 설정 하나.** `home`은 Claude/Codex 설정에 등록되는 훅 명령이 가리키는 경로이기도 합니다. 체크아웃을 옮기면 `home`을 바꾸고 `install.sh`를 다시 실행하세요. 옛 경로의 훅 항목은 "command differs from config"로 알려 주며 직접 고쳐야 합니다(명령이 바뀌면 Codex 신뢰 해시도 다시 등록해야 합니다).
 - **Claude 래퍼 수정은 문자열 기반입니다.** 작성 당시의 정확한 코드 조각만 알아봅니다. 래퍼 모양이 다르면 스크립트가 알려 주며, 두 가지 변경을 직접 적용해야 합니다.
 - **인스턴스·모델 이름은 검증하지 않습니다.** `config.json`의 이름이 틀리면 레인을 만들 때에야 드러납니다.
+- **원격 레인은 원격 컴퓨터에 t3-lead가 있어야 합니다.** 레인 규칙은 그쪽 훅이 넣습니다. 훅이 없으면 레인은 규칙을 받지 못하고, 메시지 앞부분에 참조 줄이 없으면 레인으로 인식되지 않습니다.
 - **Codex 세션은 verifier를 맡지 않습니다.** 자기 스레드를 식별할 수 없어 레인으로만 동작합니다.
 - **유실된 완료 알림은 재전달되지 않습니다.** 리드는 완료 알림으로 깨어납니다. 알림이 유실되면 다시 보내 주는 장치가 없습니다. 재시작 뒤에는 `t3lead status`로 아직 `working`인 요청을 찾아야 합니다.

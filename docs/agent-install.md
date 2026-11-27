@@ -51,7 +51,16 @@ t3lead status     # works; ledger may be empty
 
 Then start one short lane on each harness (for example "reply PONG"). Each must leave a line in `~/.t3-lead/state/hook.log`. Because your thread is not a registered lead, `unmanaged` (Claude) or `header only` (Codex) is the expected result. Remove any test entries you created under `state/`.
 
-## 7. Hand over to the user
+## 7. Remote computers (optional)
+
+Only when the user wants lanes to run on another computer linked to T3 (a linked environment):
+
+1. t3-lead must be installed **on that computer too** (steps 1-6 there, in a thread on that computer). The hook there injects the lane rules; without it, remote lanes get none.
+2. On the lead's machine, call `t3_environment_links` for the `environmentId` and `t3_project_list` (with that environment) for a `projectId` of a project on that computer. A delegated task needs both (`target_required` otherwise).
+3. Add an entry under `remotes` in `config.json` (see `config.example.json`): `environmentId`, `projectId`, optional `label`, and `models` when that computer's provider instance names differ from this machine's (find them with `orchestrator_capabilities` for that environment; a missing row is inherited from the local one).
+4. Check: `t3lead remotes` and `t3lead models` list it. No re-install is needed; the verifier rules pick it up on the next prompt.
+
+## 8. Hand over to the user
 
 Tell the user:
 

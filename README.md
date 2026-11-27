@@ -45,7 +45,7 @@ install.sh                 idempotent installer / re-apply script (--dry-run sup
 config.example.json        template for config.json (machine-specific values; config.json is not tracked)
 lib/t3lead_config.py       config loader shared by install.sh, bin/t3lead and hooks/role.py
 bin/t3lead                 state CLI (requests ledger, lessons, lead registration)
-hooks/role.py              role-detection hook (UserPromptSubmit)
+hooks/role.py              role-detection hook (UserPromptSubmit), including remote lanes
 rules/verifier.md          rules injected into verifier sessions ({{placeholders}} filled from the config)
 rules/lane.md              rules injected into lanes
 skill/SKILL.md             lead skill, linked as <skill_dir>/t3-lead
@@ -63,6 +63,14 @@ On every prompt, `hooks/role.py` receives the hook event on stdin and decides th
 - **Role** is derived from the parent's role: the lead is registered explicitly (`t3lead init`); a child of the lead is a `verifier`, a child of a verifier is a `lane`, and a child of a lane is a `lane`. If the parent is not registered, the thread is `unmanaged` and the hook outputs nothing and exits 0.
 - The role is decided once, on the thread's first prompt, saved under `state/roles/`, and the same rules are injected on every later prompt. Each decision is appended to `state/hook.log`.
 - For `verifier` and `lane`, the hook prints `rules/verifier.md` / `rules/lane.md` as `additionalContext`.
+
+**Remote lanes.** A lane delegated to another computer (a T3 linked environment) has no parent thread ID in its header: the message starts with `[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]`. So the verifier puts a reference line near the top of every message it sends such a lane (first line of the body):
+
+```
+t3-lead-ref: lane <request-id>
+```
+
+The hook treats a prompt as a lane only when **both** are true: it starts with that remote header, and the reference line is among its first three non-blank lines after it. The header alone decides nothing (no output), and neither does the reference line alone (a user could type it). On the Claude harness the lane role is recorded on the first such message and kept for the thread afterwards; on the Codex harness (no thread ID) every message is checked for the pair. A remote lane's own children follow the usual rule (a child of a lane is a lane). The line is deliberately a plain `key: value` reference, not a sentence about who the lane is: identity claims in a message raise the refusal rate. t3-lead must be installed on the remote computer for this to have any effect.
 
 **Codex harness.** The Codex app-server runs several threads in one process, so `T3CODE_THREAD_ID` is not available. In that case the hook records nothing and decides on every prompt from the message header alone (the sending thread). That is enough for lanes. A Codex session never acts as a verifier (without a thread ID its children could not find it), so for such a session the hook injects nothing when the role would be `verifier`.
 
@@ -90,10 +98,13 @@ Every key is optional. A leading `~` in a path means the **real** home directory
 | `skill_dirs` | `["~/.claude/skills"]` | skill folders; `t3-lead` is linked into each |
 | `cli_link` | `~/.local/bin/t3lead` | where the CLI symlink goes |
 | `models` | see below | provider instance and model per role |
+| `remotes` | none | other computers (T3 linked environments) that lanes can run on; see below |
 
 `models` holds `{"instance": "...", "model": "..."}` for `lead`, `verifier`, `claude_lane`, `light_lane` and `gpt_lane_refusal_prone`, plus `gpt_lanes`, an ordered list of such pairs (first is the default GPT lane). The defaults, used when a key is missing, are the values in `config.example.json`: `claudeAgent` and `codex` instances with the model names listed in that file. Replace the instance names with whatever your T3 setup calls its Claude and Codex provider instances.
 
-How the values are used: `rules/verifier.md` contains `{{placeholders}}` (`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`) that `hooks/role.py` fills in from the config each time it injects the rules, so a config change applies on the next prompt with no re-install. The lead skill does not hard-code names either: it tells the lead to run `t3lead models`.
+`remotes` maps a short name to a computer: `{"macbook": {"environmentId": "...", "projectId": "...", "label": "...", "models": {...}}}`. `environmentId` and `projectId` are required (T3 refuses a delegated task to another environment without a project: `target_required`); `label` is optional; `models` takes the same keys as the top-level `models`, and any key it omits is inherited from the local value (only correct when the instance names match, so set them when they differ). Get the IDs from `t3_environment_links` and `t3_project_list`. With no `remotes`, the remote paragraph is left out of the verifier rules entirely. `t3lead remotes` lists them and `t3lead models` adds a block per remote.
+
+How the values are used: `rules/verifier.md` contains `{{placeholders}}` (`{{gpt_lanes}}`, `{{claude_lane}}`, `{{light_lane}}`) that `hooks/role.py` fills in from the config each time it injects the rules, so a config change applies on the next prompt with no re-install. The remote paragraph (rule 7) sits between `{{#remotes}}` and `{{/remotes}}` and is injected only when `remotes` is set; `{{remote_list}}` expands to one line per remote with its IDs and models. The lead skill does not hard-code names either: it tells the lead to run `t3lead models`.
 
 ## Install
 
@@ -119,18 +130,22 @@ What it changes (each step reports "already ..." and does nothing if already app
 
 ```
 t3lead init                                 register this thread (T3CODE_THREAD_ID) as the lead
-t3lead task add "<request>" [--source S]    record a request, print its ID (t-xxxx)
-t3lead task move <id> <state> [--note N] [--verifier THREAD]
+t3lead task add "<request>" [--source S] [--where R]   record a request, print its ID (t-xxxx)
+t3lead task move <id> <state> [--note N] [--verifier THREAD] [--where R]
         states: open working waiting-owner delivered done dropped
+        --where: remote computer that runs the lanes (a name from `t3lead remotes`; `-` clears it)
 t3lead task list [--all]                    unfinished requests (default) / all
 t3lead task show <id>                       full JSON of one request
 t3lead learn "<one-line lesson>" [--kind K] append a lesson (default kind: general)
 t3lead lessons [--kind K]                   list lessons (a kind also includes general)
 t3lead status                               short summary to read after a restart
-t3lead models                               provider instance and model per role, from the config
+t3lead models                               provider instance and model per role, from the config (plus one block per remote)
+t3lead remotes                              remote computers from the config
 ```
 
 `open`, `working`, `waiting-owner` and `delivered` count as unfinished. A request is finished only when the user has been told (`delivered` → `done`). Requests are stored as `state/tasks/<id>.json`, lessons as lines in `state/lessons.jsonl`.
+
+A request with `--where` shows `@<name>` in `task list` and `status`; `task show` includes `"where"`. Older request files without it keep working. An unknown name is accepted with a warning.
 
 Typical lead flow: `t3lead init` once → `task add` → delegate to a verifier → `task move <id> working --verifier <thread>` → after the report is verified, `task move <id> delivered` → tell the user → `task move <id> done`.
 
@@ -138,10 +153,15 @@ Typical lead flow: `t3lead init` once → `task add` → delegate to a verifier 
 
 Each role's provider instance and model come from `models` in `config.json` (see Configuration); `t3lead models` prints what is in effect. The roles are the lead, the verifier (must be the Claude harness), GPT lanes (default first, then fallbacks in order), a Claude lane, and a light lane. The shipped defaults in `config.example.json` use Claude Opus for the lead and Claude Sonnet for verifiers and Claude lanes. A lead brief may override the instance and model. See `skill/references/models.md` for what each role is for, the measurements behind these choices (hook-injected rules vs rules in the brief) and the effort guidance.
 
+## Remote computers
+
+To run lanes on another computer linked to T3 Code: install t3-lead there too (its hook injects the lane rules), add the computer under `remotes` on the lead's machine, and tell the lead which one to use. The lead uses a remote only when you name it or agree to it (for example when local resources run short, it asks first). It writes `where: <name>` in the verifier brief; the verifier creates the lane with that remote's `environmentId`, `projectId` and models, starts every message to it with the `t3-lead-ref` line, and allows extra time before the deadline alarm. Completion notifications come back as for local lanes. See `docs/agent-install.md` step 7.
+
 ## Known limitations
 
 - **One config per checkout.** `home` is also where the hook command registered in your Claude/Codex settings points. If you move the checkout, change `home` and re-run `install.sh`; an existing hook entry with the old path is reported as "command differs from config" and has to be edited by hand (a changed command also needs its Codex trust hash re-registered).
 - **The Claude wrapper patch is string-based.** It only recognizes the exact snippets it was written for; if your wrapper looks different, the script says so and you apply the two changes by hand.
 - **Instance and model names are not validated.** A wrong name in `config.json` shows up only when a lane is created.
+- **Remote lanes need t3-lead on the remote computer.** The lane rules are injected by the hook there. Without it the lane gets no rules, and a remote message whose first lines lack the reference line is not recognized as a lane.
 - **Codex sessions do not act as verifiers.** They cannot identify their own thread, so they work only as lanes.
 - **No redelivery of lost completion notifications.** The lead is woken by a completion notification; if one is lost, nothing re-sends it. After a restart, `t3lead status` is the way to find requests still marked `working`.

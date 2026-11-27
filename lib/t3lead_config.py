@@ -7,9 +7,14 @@ Every key is optional. Missing keys fall back to defaults based on the *real* ho
 the passwd database (not $HOME, which differs inside wrapped sessions). A leading "~" in a configured path
 means that real home.
 
+Remote computers (T3 linked environments) go under "remotes", keyed by a short name:
+  {"macbook": {"environmentId": "...", "projectId": "...", "label": "...", "models": {<same keys as models>}}}
+environmentId and projectId are required per entry; label and every models key are optional (a missing model
+row is inherited from the local models). No "remotes" key means no remote computers.
+
 CLI (used by install.sh):  t3lead_config.py shell | json
 """
-import json, os, pwd, shlex, sys
+import json, os, pwd, re, shlex, sys
 
 CODE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -44,6 +49,58 @@ def _pair(v, where):
             and v["instance"] and v["model"]):
         raise ConfigError('%s must be {"instance": "...", "model": "..."}' % where)
     return {"instance": v["instance"], "model": v["model"]}
+
+
+MODEL_KEYS = list(DEFAULT_MODELS)
+
+
+def _models(m, where, base):
+    """Parse a models object; a missing key is taken from `base` (a parsed models dict)."""
+    if not isinstance(m, dict):
+        raise ConfigError("%s must be an object" % where)
+    models = {}
+    for k in MODEL_KEYS:
+        if k == "gpt_lanes":
+            v = m.get(k)
+            if v is None:
+                models[k] = [dict(i) for i in base[k]]
+            else:
+                if not isinstance(v, list) or not v:
+                    raise ConfigError("%s.gpt_lanes must be a non-empty list" % where)
+                models[k] = [_pair(i, "%s.gpt_lanes[%d]" % (where, n)) for n, i in enumerate(v)]
+        else:
+            models[k] = _pair(m[k], "%s.%s" % (where, k)) if k in m else dict(base[k])
+    return models
+
+
+def _remotes(raw, local_models):
+    r = raw.get("remotes")
+    if r is None:
+        return {}
+    if not isinstance(r, dict):
+        raise ConfigError("remotes must be an object keyed by remote name")
+    out = {}
+    for name, v in r.items():
+        w = "remotes.%s" % name
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", name):
+            raise ConfigError("remote name %r must use only letters, digits, '.', '_' and '-'" % name)
+        if not isinstance(v, dict):
+            raise ConfigError("%s must be an object" % w)
+        for k in ("environmentId", "projectId"):
+            if not (isinstance(v.get(k), str) and v[k]):
+                raise ConfigError("%s.%s must be a non-empty string" % (w, k))
+        label = v.get("label")
+        if label is not None and not isinstance(label, str):
+            raise ConfigError("%s.label must be a string" % w)
+        given = v.get("models") or {}
+        out[name] = {
+            "environmentId": v["environmentId"],
+            "projectId": v["projectId"],
+            "label": label or "",
+            "models": _models(given, w + ".models", local_models),
+            "own_models": sorted(k for k in given if k in MODEL_KEYS) if isinstance(given, dict) else [],
+        }
+    return out
 
 
 def load(use_file=True):
@@ -89,18 +146,8 @@ def load(use_file=True):
     m = raw.get("models") or {}
     if not isinstance(m, dict):
         raise ConfigError("models must be an object")
-    models = {}
-    for k, d in DEFAULT_MODELS.items():
-        if k == "gpt_lanes":
-            v = m.get(k)
-            if v is None:
-                models[k] = [dict(i) for i in d]
-            else:
-                if not isinstance(v, list) or not v:
-                    raise ConfigError("models.gpt_lanes must be a non-empty list")
-                models[k] = [_pair(i, "models.gpt_lanes[%d]" % n) for n, i in enumerate(v)]
-        else:
-            models[k] = _pair(m[k], "models." + k) if k in m else dict(d)
+    models = _models(m, "models", DEFAULT_MODELS)
+    remotes = _remotes(raw, models)
 
     wrapper = raw.get("claude_wrapper")
     codex_bin = raw.get("codex_bin")
@@ -117,6 +164,7 @@ def load(use_file=True):
         "skill_dirs": plist("skill_dirs", os.path.join(real_home, ".claude", "skills")),
         "cli_link": p(raw["cli_link"]) if raw.get("cli_link") else os.path.join(real_home, ".local", "bin", "t3lead"),
         "models": models,
+        "remotes": remotes,
     }
 
 
@@ -124,27 +172,47 @@ def _fmt(x):
     return "`%s` / `%s`" % (x["instance"], x["model"])
 
 
+def _gpt_text(lanes):
+    first = lanes[0]
+    rest = [("`%s`" % i["model"]) if i["instance"] == first["instance"] else _fmt(i) for i in lanes[1:]]
+    return _fmt(first) + (", then " + ", ".join(rest) if rest else "")
+
+
+def remote_list(cfg):
+    """One bullet per configured remote computer, for the {{remote_list}} placeholder in rules/verifier.md."""
+    lines = []
+    for name, r in cfg.get("remotes", {}).items():
+        m = r["models"]
+        lines.append("- `%s`%s: `target.environmentId` `%s`, `target.projectId` `%s`; GPT lanes %s; "
+                     "GPT lane (refusal-prone) %s; Claude lane %s; light lane %s" % (
+                         name, " (%s)" % r["label"] if r["label"] else "", r["environmentId"], r["projectId"],
+                         _gpt_text(m["gpt_lanes"]), _fmt(m["gpt_lane_refusal_prone"]),
+                         _fmt(m["claude_lane"]), _fmt(m["light_lane"])))
+    return "\n".join(lines)
+
+
 def template_vars(cfg):
     """Values for {{placeholders}} in rules/*.md."""
     m = cfg["models"]
-    lanes = m["gpt_lanes"]
-    first = lanes[0]
-    rest = [("`%s`" % i["model"]) if i["instance"] == first["instance"] else _fmt(i) for i in lanes[1:]]
-    gpt = _fmt(first) + (", then " + ", ".join(rest) if rest else "")
     return {
         "lead": _fmt(m["lead"]),
         "verifier": _fmt(m["verifier"]),
-        "gpt_lanes": gpt,
+        "gpt_lanes": _gpt_text(m["gpt_lanes"]),
         "gpt_lane_refusal_prone": _fmt(m["gpt_lane_refusal_prone"]),
         "claude_lane": _fmt(m["claude_lane"]),
         "light_lane": _fmt(m["light_lane"]),
+        "remote_list": remote_list(cfg),
     }
 
 
 def render(text, cfg):
-    """Replace {{name}} placeholders; an unknown placeholder is left as written."""
-    vars_ = template_vars(cfg)
-    for k, v in vars_.items():
+    """Replace {{name}} placeholders; an unknown placeholder is left as written.
+    A {{#remotes}}...{{/remotes}} block is kept (markers removed) only when remotes are configured."""
+    if cfg.get("remotes"):
+        text = text.replace("{{#remotes}}", "").replace("{{/remotes}}\n", "").replace("{{/remotes}}", "")
+    else:
+        text = re.sub(r"\{\{#remotes\}\}.*?\{\{/remotes\}\}\n?", "", text, flags=re.S)
+    for k, v in template_vars(cfg).items():
         text = text.replace("{{%s}}" % k, v)
     return text
 

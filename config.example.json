@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to config.json and edit. Every key is optional; a missing key falls back to the default shown in the README. A leading ~ means the real home (from the passwd database, not $HOME).",
+  "_comment": "Copy to config.json and edit. Every key is optional (to use a remote computer, move an entry from _remotes_example into remotes); a missing key falls back to the default shown in the README. A leading ~ means the real home (from the passwd database, not $HOME).",
 
   "real_home": "/home/you",
   "home": "~/.t3-lead",
@@ -22,5 +22,20 @@
     "gpt_lane_refusal_prone": {"instance": "codex", "model": "gpt-6.2-sol"},
     "claude_lane": {"instance": "claudeAgent", "model": "claude-sonnet-5-5"},
     "light_lane":  {"instance": "claudeAgent", "model": "claude-haiku-5-5"}
+  },
+
+  "remotes": {},
+  "_remotes_example": {
+    "macbook": {
+      "label": "MacBook (linked environment)",
+      "environmentId": "<environmentId from t3_environment_links>",
+      "projectId": "<projectId of a project on that computer>",
+      "models": {
+        "gpt_lanes": [{"instance": "codex", "model": "gpt-6.1-terra"}],
+        "gpt_lane_refusal_prone": {"instance": "codex", "model": "gpt-6.2-sol"},
+        "claude_lane": {"instance": "claudeAgent", "model": "claude-sonnet-5-5"},
+        "light_lane":  {"instance": "claudeAgent", "model": "claude-haiku-5-5"}
+      }
+    }
   }
 }
